@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+.vite/
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Misc
+*.tsbuildinfo
+.cache/
+.npm-cache/
+coverage/
+
+# Local debug / scrape leftovers (do not publish)
+_probe*.py
+_scan_*.py
+parse_*.py
+extract_*.py
+/*.chunk.js
+/base_chunk.js
+/sig_chunk.js
+/request_chunk.js
+/kugou-js.js
+/kugou_*.json
+/kugou_*.cjs
+/fetch-kugou-playlist.cjs
+/test-*.cjs
+/meting_playlist.json
+/zlist_list.txt
+/share_page.html
+/findstr_out.txt
