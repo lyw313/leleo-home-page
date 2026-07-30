@@ -1,10 +1,35 @@
 # 个人主页｜我不是神
 
+[![Live Demo](https://img.shields.io/badge/Demo-Netlify-00C7B7?style=flat-square&logo=netlify&logoColor=white)](https://strong-kangaroo-fb7c41.netlify.app/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vue.js&logoColor=white)](https://vuejs.org/)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Vuetify](https://img.shields.io/badge/Vuetify-3-1867C0?style=flat-square&logo=vuetify&logoColor=white)](https://vuetifyjs.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/lyw313/leleo-home-page?style=flat-square)](https://github.com/lyw313/leleo-home-page/stargazers)
+
 基于 [leleo-home-page](https://github.com/leleo886/leleo-home-page) 二次开发的 Vue 3 个人主页。  
 毛玻璃仪表盘风格，左侧资料、中间「我的世界」转盘与留言、右侧博客与音乐，支持游客浏览与管理员本地编辑。
 
+<p align="center">
+  <a href="https://strong-kangaroo-fb7c41.netlify.app/"><b>🌐 在线演示</b></a>
+  ·
+  <a href="#效果预览"><b>🖼 效果预览</b></a>
+  ·
+  <a href="#快速开始"><b>🚀 快速开始</b></a>
+  ·
+  <a href="#小巧思--互动彩蛋"><b>✨ 互动彩蛋</b></a>
+  ·
+  <a href="https://github.com/lyw313/leleo-home-page"><b>📦 源码仓库</b></a>
+</p>
+
 - **在线演示**：[https://strong-kangaroo-fb7c41.netlify.app/](https://strong-kangaroo-fb7c41.netlify.app/)（可直接打开体验完整站点）
 - **源码仓库**：[https://github.com/lyw313/leleo-home-page](https://github.com/lyw313/leleo-home-page)
+
+### English Summary
+
+A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism dashboard UI: profile & skills, a “My World” dial (life / sport / game / project), study blog, guestbook reviews, EmailJS contact form, mini music player, and playful interactive mascots.  
+
+**[Live demo →](https://strong-kangaroo-fb7c41.netlify.app/)** · Customize mostly via `src/config.js` · `npm install && npm run dev`
 
 ---
 
@@ -357,6 +382,10 @@ npm run preview
 - 感谢每一位访问、留言、提出建议的朋友。  
 
 若本项目对你有帮助，欢迎 Star ⭐；转载或二次开发时请保留对原作者的致谢。
+
+### 仓库 Topics（发现相关）
+
+本仓库建议 Topics：`vue` · `vue3` · `vite` · `vuetify` · `homepage` · `personal-website` · `portfolio` · `frontend` · `glassmorphism` · `personal-homepage`
 
 ---
 
