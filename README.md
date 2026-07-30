@@ -3,7 +3,8 @@
 基于 [leleo-home-page](https://github.com/leleo886/leleo-home-page) 二次开发的 Vue 3 个人主页。  
 毛玻璃仪表盘风格，左侧资料、中间「我的世界」转盘与留言、右侧博客与音乐，支持游客浏览与管理员本地编辑。
 
-仓库地址：[https://github.com/lyw313/leleo-home-page](https://github.com/lyw313/leleo-home-page)
+- **在线演示**：[https://strong-kangaroo-fb7c41.netlify.app/](https://strong-kangaroo-fb7c41.netlify.app/)（可直接打开体验完整站点）
+- **源码仓库**：[https://github.com/lyw313/leleo-home-page](https://github.com/lyw313/leleo-home-page)
 
 ---
 
@@ -24,6 +25,14 @@
 ---
 
 ## 效果预览
+
+### 在线访问
+
+不想本地跑的话，可以直接打开部署好的网页：
+
+**👉 [https://strong-kangaroo-fb7c41.netlify.app/](https://strong-kangaroo-fb7c41.netlify.app/)**
+
+托管在 Netlify，打开即可浏览首页、我的世界、学习博客、评价页、音乐播放与互动彩蛋等完整功能。
 
 ### 演示视频
 
@@ -271,6 +280,9 @@ npm run build
 
 把生成的 **`dist` 文件夹**拖到 Netlify「上传项目文件」即可。  
 （本仓库 `.gitignore` 默认忽略 `dist`，部署前请本地先 build。）
+
+本项目当前在线演示（Netlify）：  
+https://strong-kangaroo-fb7c41.netlify.app/
 
 ### 方式 B：连接 Git 自动构建
 
