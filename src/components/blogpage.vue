@@ -165,14 +165,18 @@
           打开项目 / 仓库
           <span>{{ post.projectUrl }}</span>
         </a>
-        <div class="blog-page__body">{{ post.content }}</div>
+        <div
+          class="blog-page__body blog-body-content"
+          v-html="renderedContent"
+          @click="onBodyClick"
+        ></div>
       </article>
 
       <!-- 写作 / 编辑 -->
       <section v-else-if="mode === 'write' || mode === 'edit'" class="blog-page__editor">
         <h2 class="blog-page__editor-title">{{ mode === 'edit' ? '编辑记录' : '写一篇学习记录' }}</h2>
         <p class="blog-page__editor-desc">
-          可以写学习笔记，也可以附上 GitHub / 演示链接做项目分享（类似 CSDN 博文 + 开源项目介绍）。
+          先把光标放到想插入的位置，再点「上传文档」——会作为可点击附件插入该处；也支持粘贴表格，以及大/小序号。
         </p>
 
         <div v-if="!unlocked" class="blog-page__login blog-page__login--block">
@@ -218,15 +222,12 @@
           <input v-model="draft.projectUrl" class="blog-page__input" type="url" maxlength="300" placeholder="https://github.com/xxx/yyy" />
 
           <label class="blog-page__label">正文</label>
-          <textarea
+          <blog-editor
             v-model="draft.content"
-            class="blog-page__textarea"
-            maxlength="50000"
-            placeholder="写学习过程、踩坑、项目介绍、使用方式……"
-          ></textarea>
+          />
 
           <div class="blog-page__editor-foot">
-            <span>{{ draft.content.length }} / 50000</span>
+            <span>富文本正文 · 自动清洗粘贴内容</span>
             <button type="button" class="blog-page__primary" :disabled="!canSave" @click="saveDraft">
               {{ mode === 'edit' ? '保存修改' : '发布记录' }}
             </button>
@@ -257,6 +258,8 @@ import {
   verifySitePassword,
   authTtlFromConfig,
 } from '../utils/authStore.js';
+import { renderBlogHtml, stripHtml, openBlogAttachment } from '../utils/blogHtml.js';
+import BlogEditor from './blogeditor.vue';
 
 function emptyDraft() {
   return {
@@ -271,6 +274,7 @@ function emptyDraft() {
 
 export default {
   name: 'BlogPage',
+  components: { BlogEditor },
   props: {
     mode: { type: String, default: 'list' }, // list | read | write | edit
     postId: { type: String, default: '' },
@@ -357,7 +361,10 @@ export default {
       });
     },
     canSave() {
-      return this.draft.title.trim() && this.draft.content.trim();
+      return this.draft.title.trim() && stripHtml(this.draft.content).trim();
+    },
+    renderedContent() {
+      return this.post ? renderBlogHtml(this.post.content) : '';
     },
     remainText() {
       const left = Math.max(0, this.expiresAt - this.tick);
@@ -472,7 +479,7 @@ export default {
       const payload = {
         kind: this.draft.kind,
         title: this.draft.title,
-        summary: this.draft.summary,
+        summary: this.draft.summary || excerpt(this.draft.content, 120),
         tags: this.draft.tagsText,
         projectUrl: this.draft.projectUrl,
         content: this.draft.content,
@@ -486,6 +493,16 @@ export default {
       this.posts = addBlogPost(this.posts, payload);
       notifyBlogUpdated();
       this.$emit('published', this.posts[0]?.id || '');
+    },
+    onBodyClick(e) {
+      const fileLink = e.target?.closest?.('a.blog-file');
+      if (!fileLink) return;
+      e.preventDefault();
+      openBlogAttachment({
+        href: fileLink.getAttribute('href'),
+        name: fileLink.getAttribute('data-file-name') || 'document',
+        mime: fileLink.getAttribute('data-file-mime') || '',
+      });
     },
     removePost(id) {
       this.refreshAuth();
@@ -815,7 +832,6 @@ export default {
   word-break: break-all;
 }
 .blog-page__body {
-  white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.9;
   font-size: 1.02rem;
@@ -840,8 +856,7 @@ export default {
   font-size: 0.78rem;
   opacity: 0.75;
 }
-.blog-page__input,
-.blog-page__textarea {
+.blog-page__input {
   width: 100%;
   box-sizing: border-box;
   border-radius: 12px;
@@ -853,11 +868,6 @@ export default {
   outline: none;
   caret-color: #ffe8a0;
   margin-bottom: 0.55rem;
-}
-.blog-page__textarea {
-  min-height: min(48vh, 420px);
-  resize: vertical;
-  line-height: 1.7;
 }
 .blog-page__editor-foot {
   display: flex;
@@ -876,5 +886,210 @@ export default {
   }
   .blog-page__top-actions { justify-content: flex-start; }
   .blog-page__shell { width: calc(100% - 1rem); }
+}
+</style>
+
+<style>
+/* 正文 / 编辑器共享：表格、大序号、小序号 */
+.blog-body-content {
+  counter-reset: blog-h2;
+}
+.blog-body-content h1,
+.blog-body-content h2,
+.blog-body-content h3,
+.blog-body-content h4 {
+  line-height: 1.35;
+  margin: 1.25em 0 0.55em;
+  font-weight: 750;
+}
+.blog-body-content h2 {
+  counter-increment: blog-h2;
+  counter-reset: blog-h3;
+  font-size: 1.28em;
+}
+.blog-body-content h2::before {
+  content: counter(blog-h2) ". ";
+  color: #ffe8a0;
+  font-variant-numeric: tabular-nums;
+}
+.blog-body-content h3 {
+  counter-increment: blog-h3;
+  font-size: 1.1em;
+  opacity: 0.95;
+}
+.blog-body-content h3::before {
+  content: counter(blog-h2) "." counter(blog-h3) " ";
+  color: #b8f0ff;
+  font-variant-numeric: tabular-nums;
+}
+.blog-body-content p {
+  margin: 0.55em 0;
+}
+.blog-body-content ul,
+.blog-body-content ol {
+  margin: 0.55em 0;
+  padding-left: 1.4em;
+}
+.blog-body-content li {
+  margin: 0.25em 0;
+}
+.blog-body-content ol {
+  list-style: decimal;
+}
+.blog-body-content ol ol {
+  list-style: lower-alpha;
+}
+.blog-body-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.blog-body-content pre {
+  overflow: auto;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.blog-body-content a {
+  color: #b8f0ff;
+}
+.blog-body-content a.blog-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 14px;
+  text-decoration: none;
+  color: #eef3f8;
+  background: rgba(184, 240, 255, 0.1);
+  border: 1px solid rgba(184, 240, 255, 0.28);
+  cursor: pointer;
+  max-width: 100%;
+  box-sizing: border-box;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.blog-body-content a.blog-file:hover {
+  background: rgba(184, 240, 255, 0.18);
+  border-color: rgba(255, 232, 160, 0.45);
+}
+.blog-body-content .blog-file__badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  color: #1a1f28;
+  background: linear-gradient(135deg, #ffe8a0, #b8f0ff);
+}
+.blog-body-content .blog-file__name {
+  font-weight: 750;
+  font-size: 0.92rem;
+  word-break: break-all;
+}
+.blog-body-content .blog-file__meta {
+  width: 100%;
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.72;
+}
+.blog-body-content .blog-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.blog-body-content .blog-table-wrap {
+  margin: 1rem 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(246, 247, 249, 0.98);
+  border: 1px solid rgba(210, 214, 220, 0.95);
+  color: #1f2430;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.blog-body-content .blog-table-wrap__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #3a4150;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+  user-select: none;
+}
+.blog-body-content .blog-table-wrap__del {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #b42318;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(180, 35, 24, 0.08);
+  cursor: pointer;
+}
+.blog-body-content .blog-table-wrap__del:hover {
+  background: rgba(180, 35, 24, 0.16);
+}
+/* 阅读页不显示删除 */
+.blog-page__body .blog-table-wrap__del {
+  display: none;
+}
+.blog-body-content .blog-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  background: #fff;
+}
+.blog-body-content .blog-table-wrap th,
+.blog-body-content .blog-table-wrap td {
+  border: 1px solid #e5e7eb;
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.55;
+  /* 白底单元格：用深色光标，否则继承编辑区浅色 caret 几乎看不见 */
+  caret-color: #111827;
+  min-width: 3.5rem;
+  min-height: 2.4em;
+}
+.blog-editor__surface .blog-table-wrap th.is-editing,
+.blog-editor__surface .blog-table-wrap td.is-editing {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  background: #eff6ff !important;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+.blog-body-content .blog-table-wrap thead th,
+.blog-body-content .blog-table-wrap tr:first-child th {
+  background: #f3f4f6;
+  font-weight: 700;
+  color: #2b3140;
+}
+.blog-body-content .blog-table-wrap tbody td:first-child,
+.blog-body-content .blog-table-wrap tr td:first-child {
+  background: #f8f9fb;
+  font-weight: 600;
+  width: 28%;
+  min-width: 5.5rem;
+}
+.blog-body-content table:not(.blog-table-wrap table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1f2430;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.blog-body-content table:not(.blog-table-wrap table) th,
+.blog-body-content table:not(.blog-table-wrap table) td {
+  border: 1px solid #e5e7eb;
+  padding: 0.65rem 0.8rem;
 }
 </style>

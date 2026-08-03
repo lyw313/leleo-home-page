@@ -18,6 +18,7 @@
         <template v-if="isAdmin">
           <span class="auth-chip__tag">管理员</span>
           <span class="auth-chip__remain">{{ remainText }}</span>
+          <button type="button" class="auth-chip__btn" title="导出 / 导入本站数据" @click="showBackup = true">数据</button>
           <button type="button" class="auth-chip__btn" @click="logout">退出</button>
         </template>
         <template v-else>
@@ -48,6 +49,35 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showBackup && isAdmin" class="auth-modal">
+      <div class="auth-modal__card auth-modal__card--wide">
+        <h3>站点数据备份</h3>
+        <p>
+          博客、资料、我的世界、留言、歌单都存在当前浏览器里。换电脑 / 换域名（例如从 Netlify 到本地）时，
+          先在旧站「导出」，再到新站「导入」。
+        </p>
+        <ul class="auth-backup__tips">
+          <li>导出：下载一个 <code>.json</code> 备份文件</li>
+          <li>覆盖导入：用备份替换当前浏览器里的数据</li>
+          <li>合并导入：博客按 id 合并，其它项仅在本地为空时写入</li>
+        </ul>
+        <div v-if="backupMsg" class="auth-backup__msg" :class="{ error: backupError }">{{ backupMsg }}</div>
+        <div class="auth-modal__actions auth-modal__actions--wrap">
+          <button type="button" class="auth-modal__ghost" :disabled="busy" @click="showBackup = false">关闭</button>
+          <button type="button" class="auth-modal__ghost" :disabled="busy" @click="doExport">导出备份</button>
+          <button type="button" class="auth-modal__ghost" :disabled="busy" @click="pickImport('merge')">合并导入</button>
+          <button type="button" class="auth-modal__primary" :disabled="busy" @click="pickImport('replace')">覆盖导入</button>
+        </div>
+        <input
+          ref="backupInput"
+          class="auth-backup__file"
+          type="file"
+          accept="application/json,.json"
+          @change="onImportFile"
+        />
+      </div>
+    </div>
   </Teleport>
 </template>
 
@@ -63,6 +93,12 @@ import {
   renewCooldownLeft,
   DEFAULT_TTL_MS,
 } from '../utils/authStore.js';
+import {
+  downloadSiteBackup,
+  readBackupFromFile,
+  importSiteBackup,
+  summarizeBackup,
+} from '../utils/dataBackup.js';
 
 export default {
   name: 'AuthChip',
@@ -75,10 +111,15 @@ export default {
       isAdmin: false,
       expiresAt: 0,
       showLogin: false,
+      showBackup: false,
       password: '',
       error: '',
       tick: Date.now(),
       timer: null,
+      busy: false,
+      backupMsg: '',
+      backupError: false,
+      importMode: 'replace',
     };
   },
   computed: {
@@ -135,6 +176,7 @@ export default {
       this.isAdmin = !!auth.ok;
       this.expiresAt = auth.expiresAt || 0;
       this.$emit('change', this.isAdmin);
+      if (!this.isAdmin) this.showBackup = false;
     },
     login() {
       this.error = '';
@@ -161,7 +203,57 @@ export default {
       clearSiteAuth();
       this.isAdmin = false;
       this.expiresAt = 0;
+      this.showBackup = false;
       this.$emit('change', false);
+    },
+    async doExport() {
+      this.busy = true;
+      this.backupError = false;
+      this.backupMsg = '正在导出…';
+      try {
+        const summary = await downloadSiteBackup();
+        this.backupMsg = `已下载备份：博客 ${summary.blogCount} 篇` +
+          (summary.musicBlobCount ? `，本地音乐 ${summary.musicBlobCount} 首` : '');
+      } catch (_) {
+        this.backupError = true;
+        this.backupMsg = '导出失败，请重试';
+      } finally {
+        this.busy = false;
+      }
+    },
+    pickImport(mode) {
+      this.importMode = mode;
+      this.backupMsg = '';
+      this.backupError = false;
+      this.$refs.backupInput?.click();
+    },
+    async onImportFile(e) {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+
+      const merge = this.importMode === 'merge';
+      const tip = merge
+        ? '将合并导入备份数据，是否继续？'
+        : '将用备份覆盖当前浏览器里的站点数据，是否继续？';
+      if (!confirm(tip)) return;
+
+      this.busy = true;
+      this.backupError = false;
+      this.backupMsg = '正在导入…';
+      try {
+        const payload = await readBackupFromFile(file);
+        const info = summarizeBackup(payload);
+        const result = await importSiteBackup(payload, { merge });
+        this.backupMsg = `导入完成：博客约 ${info.blogCount} 篇` +
+          (result.blobCount ? `，音乐文件 ${result.blobCount} 个` : '') +
+          '。页面即将刷新…';
+        setTimeout(() => location.reload(), 700);
+      } catch (err) {
+        this.backupError = true;
+        this.backupMsg = err?.message || '导入失败，请确认是本站导出的 json 文件';
+        this.busy = false;
+      }
     },
   },
 };
@@ -261,6 +353,9 @@ export default {
   color: #1f2933;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
 }
+.auth-modal__card--wide {
+  width: min(520px, 100%);
+}
 .auth-modal__card h3 {
   margin: 0 0 0.45rem;
   font-size: 1.15rem;
@@ -270,6 +365,31 @@ export default {
   font-size: 0.84rem;
   line-height: 1.55;
   opacity: 0.78;
+}
+.auth-backup__tips {
+  margin: 0 0 0.85rem;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  opacity: 0.82;
+}
+.auth-backup__tips code {
+  font-size: 0.78em;
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+}
+.auth-backup__msg {
+  margin-bottom: 0.7rem;
+  font-size: 0.8rem;
+  color: #1f6f78;
+  font-weight: 650;
+}
+.auth-backup__msg.error {
+  color: #c0392b;
+}
+.auth-backup__file {
+  display: none;
 }
 .auth-modal__input {
   width: 100%;
@@ -290,6 +410,9 @@ export default {
   justify-content: flex-end;
   gap: 0.45rem;
 }
+.auth-modal__actions--wrap {
+  flex-wrap: wrap;
+}
 .auth-modal__ghost,
 .auth-modal__primary {
   border: none;
@@ -301,13 +424,14 @@ export default {
 .auth-modal__ghost {
   background: rgba(0, 0, 0, 0.06);
 }
-.auth-modal__primary {
-  background: #2a6f76;
-  color: #fff;
-}
+.auth-modal__ghost:disabled,
 .auth-modal__primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.auth-modal__primary {
+  background: #2a6f76;
+  color: #fff;
 }
 
 @media (max-width: 600px) {

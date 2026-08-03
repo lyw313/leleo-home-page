@@ -27,7 +27,7 @@ function normalizePosts(list = []) {
   return list
     .map((item, index) => {
       const title = String(item.title || '未命名记录').trim().slice(0, 120);
-      const content = String(item.content || '').trim().slice(0, 50000);
+      const content = String(item.content || '').trim().slice(0, 120000);
       const summary = String(item.summary || excerpt(content, 120)).trim().slice(0, 200);
       return {
         id: item.id || `post-${index}-${Date.now()}`,
@@ -45,7 +45,16 @@ function normalizePosts(list = []) {
 }
 
 export function excerpt(content = '', len = 80) {
-  const text = String(content || '').replace(/\s+/g, ' ').trim();
+  const raw = String(content || '');
+  const text = raw
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (text.length <= len) return text;
   return `${text.slice(0, len)}…`;
 }
@@ -73,7 +82,7 @@ export function getBlogPost(list, id) {
 
 function buildPayload(payload = {}) {
   const now = Date.now();
-  const content = String(payload.content || '').trim().slice(0, 50000);
+  const content = String(payload.content || '').trim().slice(0, 120000);
   const projectUrl = normalizeUrl(payload.projectUrl || '');
   return {
     title: String(payload.title || '未命名记录').trim().slice(0, 120),

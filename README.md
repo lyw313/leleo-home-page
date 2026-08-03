@@ -27,7 +27,7 @@
 
 ### English Summary
 
-A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism dashboard UI: profile & skills, a “My World” dial (life / sport / game / project), study blog, guestbook reviews, EmailJS contact form, mini music player, and playful interactive mascots.  
+A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism dashboard UI: profile & skills, a “My World” dial (life / sport / game / project), study blog with rich-text editor (tables / attachments / numbered headings), guestbook reviews, EmailJS contact form, mini music player, local data export/import, and playful interactive mascots.  
 
 **[Live demo →](https://strong-kangaroo-fb7c41.netlify.app/)** · Customize mostly via `src/config.js` · `npm install && npm run dev`
 
@@ -37,11 +37,13 @@ A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism
 
 - [效果预览](#效果预览)
 - [项目介绍](#项目介绍)
+- [系统框架图](#系统框架图)
 - [小巧思 / 互动彩蛋](#小巧思--互动彩蛋)
 - [技术栈](#技术栈)
 - [快速开始](#快速开始)
 - [配置成自己的站点](#配置成自己的站点)
 - [功能模块介绍](#功能模块介绍)
+- [数据备份与迁移](#数据备份与迁移)
 - [部署上线](#部署上线)
 - [项目结构](#项目结构)
 - [已知不足与后续优化](#已知不足与后续优化)
@@ -100,7 +102,54 @@ A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism
 
 **访客**可浏览、留言、评论；输入管理员密码后，可在浏览器内增删改博客、世界模块、个人资料与歌单（数据默认保存在本机 `localStorage` / IndexedDB）。
 
+博客编辑器支持：**富文本正文**、AI/网页**表格粘贴**、光标处**文档附件**、**大/小序号**标题；管理员可通过右上角「数据」**导出 / 导入**整站本地数据，方便从 Netlify 迁到本机或换电脑。
+
 > ⚠️ **公开仓库前请先修改** `src/config.js` 里的管理员密码、EmailJS 密钥、邮箱与社交链接，避免泄露个人密钥。
+
+---
+
+## 系统框架图
+
+静态前端 + 浏览器本地存储，无自建后端。完整说明见 [`docs/architecture/architecture.md`](./docs/architecture/architecture.md)。
+
+<p align="center">
+  <img src="./docs/architecture/01-architecture.png" width="900" alt="个人主页系统框架图" />
+</p>
+
+```mermaid
+flowchart TB
+  subgraph Client["浏览器"]
+    Visitor["访客浏览"]
+    Admin["管理员登录"]
+  end
+
+  subgraph App["Vue 3 + Vite + Vuetify"]
+    Pages["页面层<br/>首页 / 博客 / 世界 / 评价 / 音乐"]
+    Auth["权限 AuthChip"]
+    Editor["博客富文本 BlogEditor"]
+    Backup["数据备份导入导出"]
+    Utils["Store 工具层"]
+  end
+
+  Config["config.js 站点配置"]
+  LS[(localStorage)]
+  IDB[(IndexedDB 音乐)]
+  EmailJS["EmailJS"]
+  Netlify["Netlify 静态托管"]
+
+  Visitor --> Pages
+  Admin --> Auth --> Pages
+  Pages --> Editor
+  Pages --> Utils
+  Auth --> Backup
+  Backup <--> LS
+  Backup <--> IDB
+  Config --> Pages
+  Utils <--> LS
+  Utils <--> IDB
+  Pages --> EmailJS
+  App --> Netlify
+```
 
 ---
 
@@ -284,14 +333,30 @@ emailjs: {
 | **留言板** | 姓名、邮箱、内容，经 EmailJS 发到你的邮箱 |
 | **我的世界** | 圆形四象限转盘；点击进入对应空间，支持大图灯箱；管理员可增删内容 |
 | **时钟转盘** | 实时时间与日期装饰 |
-| **学习博客** | 右侧入口 + 独立博客空间；笔记 / 项目分享；游客只读，管理员 CRUD |
+| **学习博客** | 右侧入口 + 独立博客空间；笔记 / 项目分享；**富文本编辑**（表格粘贴、文档附件、大/小序号）；游客只读，管理员 CRUD |
 | **大家的评价** | 独立评价页，支持查看与留言评论 |
 | **迷你音乐播放器** | 右下角歌单、进度、音量、循环、简单歌词；首页显示 |
 | **互动彩蛋** | 「我不是神」攀爬小人（移动 / 愤怒 / 爆炸 / 听歌跳舞）、肌肉小人（秀肌肉 / 听歌兴奋）等，详见 [小巧思](#小巧思--互动彩蛋) |
 | **清屏开关** | 隐藏 UI，专注看壁纸 |
 | **权限系统** | 游客 / 管理员；会话约 2 小时，支持续期 |
+| **数据备份** | 管理员右上角「数据」：导出 / 覆盖导入 / 合并导入（含博客、资料、世界、评价、歌单与本地音乐文件） |
 
-数据说明：博客、世界页内容、评论、自定义歌单等**主要存在访问者自己的浏览器**，换电脑或清缓存会丢；适合个人自用展示，不是多人共用的后端 CMS。
+数据说明：博客、世界页内容、评论、自定义歌单等**主要存在访问者自己的浏览器**，换电脑或清缓存会丢；适合个人自用展示，不是多人共用的后端 CMS。跨环境请用下方「数据备份与迁移」。
+
+---
+
+## 数据备份与迁移
+
+适用于：Netlify 线上站 ↔ 本地开发、换电脑、换浏览器。
+
+1. 在**有数据的站点**管理员登录 → 右上角 **数据** → **导出备份**（得到 `.json`）。  
+2. 在**目标站点**管理员登录 → **数据** → **覆盖导入**（或 **合并导入**）→ 选择该文件 → 页面自动刷新。  
+
+说明：
+
+- 备份包含博客、个人资料、我的世界、评价、歌单，以及 IndexedDB 中的本地音乐。  
+- **覆盖导入**会替换当前浏览器里对应数据；**合并导入**会按博客 id 合并，其它项仅在本地为空时写入。  
+- 业务数据不在 Netlify 服务器上；部署新前端代码不会自动带上旧浏览器里的内容，需要手动导出/导入。
 
 ---
 
@@ -333,6 +398,8 @@ npm run preview
 ## 项目结构
 
 ```text
+├── docs/
+│   └── architecture/       # 系统框架图（Mermaid + PNG）
 ├── img/preview/            # README 预览图与演示视频
 ├── public/                 # 静态资源（图片、音乐、favicon）
 │   ├── img/
@@ -343,7 +410,13 @@ npm run preview
 │   ├── app.js              # 主逻辑
 │   ├── config.js           # ★ 站点配置（先改这里）
 │   ├── components/         # 页面组件（博客、世界、音乐、彩蛋等）
-│   └── utils/              # 本地存储、歌词、权限等工具
+│   │   ├── blogeditor.vue  # 博客富文本编辑器
+│   │   ├── authchip.vue    # 管理员登录 / 数据备份
+│   │   └── …
+│   └── utils/              # 本地存储、备份、权限、歌词等
+│       ├── dataBackup.js   # 站点数据导出 / 导入
+│       ├── blogHtml.js     # 正文清洗、表格、附件
+│       └── …
 ├── package.json
 └── README.md
 ```
@@ -354,12 +427,13 @@ npm run preview
 
 ### 当前不足
 
-1. **无后端**：内容存在浏览器本地，无法跨设备同步，也不适合多人共同维护。  
+1. **无后端**：内容存在浏览器本地，无法自动跨设备同步，也不适合多人共同维护（可用「数据备份」手工迁移）。  
 2. **管理员密码写在前端配置**：只能挡君子，不能真正防攻击；公开仓库务必改密。  
 3. **首屏资源偏重**：壁纸、字体、音乐、大图较多，弱网加载偏慢。  
 4. **移动端信息密度高**：桌面仪表盘搬到小屏后，滚动与遮挡仍可再打磨。  
 5. **EmailJS / 第三方依赖**：留言依赖外网服务，配置或配额出问题会影响发信。  
 6. **大体积媒体进仓库**：`public/music`、高清壁纸会让 Git 仓库变大。  
+7. **附件体积受限**：博客文档附件存在 localStorage，单文件约 1.5MB 上限。  
 
 ### 后续可优化方向
 
@@ -368,7 +442,7 @@ npm run preview
 - 图片 WebP / 懒加载、路由与组件按需拆包，优化 LCP  
 - 移动端单独布局或折叠次要模块  
 - CI：GitHub Actions 自动 build + 部署预览  
-- 博客支持 Markdown、标签筛选与搜索  
+- 博客 Markdown 源码模式、目录大纲、图片上传图床  
 - 音乐支持在线歌单 API（注意版权与跨域）  
 
 欢迎 Issue / PR 一起改进。
@@ -385,7 +459,7 @@ npm run preview
 
 ### 仓库 Topics（发现相关）
 
-本仓库建议 Topics：`vue` · `vue3` · `vite` · `vuetify` · `homepage` · `personal-website` · `portfolio` · `frontend` · `glassmorphism` · `personal-homepage`
+本仓库建议 Topics：`vue` · `vue3` · `vite` · `vuetify` · `homepage` · `personal-website` · `portfolio` · `frontend` · `glassmorphism` · `personal-homepage` · `blog` · `netlify`
 
 ---
 
