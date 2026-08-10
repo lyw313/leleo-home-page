@@ -1,14 +1,17 @@
+import { mergePlannerStates } from './plannerStore.js';
+
 const BACKUP_VERSION = 1;
 const BACKUP_KIND = 'leleo-site-backup';
 
 /** 可迁移的业务数据（不含登录态） */
 export const BACKUP_STORAGE_KEYS = [
   'leleo-blog-posts-v3',
+  'leleo-blog-folders-v1',
   'leleo-blog-posts-v2',
   'leleo-blog-posts-v1',
   'leleo-profile-v1',
   'leleo-world-modules-v1',
-  'leleo-reviews-v1',
+  'leleo-planner-v1',
   'leleo-music-playlist-v1',
   'leleo-music-volume',
 ];
@@ -133,7 +136,7 @@ export function summarizeBackup(payload) {
     blogCount,
     hasProfile: !!storage['leleo-profile-v1'],
     hasWorld: !!storage['leleo-world-modules-v1'],
-    hasReviews: !!storage['leleo-reviews-v1'],
+    hasPlanner: !!storage['leleo-planner-v1'],
     hasMusic: !!storage['leleo-music-playlist-v1'],
     musicBlobCount: Object.keys(payload?.musicBlobs || {}).length,
   };
@@ -217,7 +220,7 @@ export async function importSiteBackup(payload, { merge = false } = {}) {
         applied.push(key);
         return;
       }
-      // merge：目标为空才写入；博客合并数组
+      // merge：目标为空才写入；博客合并数组；计划本按日期合并
       if (key.startsWith('leleo-blog-posts-')) {
         const incoming = JSON.parse(data[key] || '[]');
         const existing = JSON.parse(localStorage.getItem('leleo-blog-posts-v3') || '[]');
@@ -229,6 +232,29 @@ export async function importSiteBackup(payload, { merge = false } = {}) {
         });
         localStorage.setItem('leleo-blog-posts-v3', JSON.stringify([...map.values()]));
         applied.push('leleo-blog-posts-v3');
+        return;
+      }
+      if (key === 'leleo-blog-folders-v1') {
+        const incoming = JSON.parse(data[key] || '[]');
+        const existing = JSON.parse(localStorage.getItem('leleo-blog-folders-v1') || '[]');
+        if (!Array.isArray(incoming)) return;
+        const map = new Map();
+        [...existing, ...incoming].forEach((item) => {
+          if (item?.id) map.set(item.id, item);
+          else map.set(`anon-${map.size}`, item);
+        });
+        localStorage.setItem('leleo-blog-folders-v1', JSON.stringify([...map.values()]));
+        applied.push('leleo-blog-folders-v1');
+        return;
+      }
+      if (key === 'leleo-planner-v1') {
+        let incoming = {};
+        let existing = {};
+        try { incoming = JSON.parse(data[key] || '{}'); } catch (_) {}
+        try { existing = JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) {}
+        const merged = mergePlannerStates(existing, incoming);
+        localStorage.setItem(key, JSON.stringify(merged));
+        applied.push(key);
         return;
       }
       if (localStorage.getItem(key) == null) {
@@ -244,7 +270,7 @@ export async function importSiteBackup(payload, { merge = false } = {}) {
   window.dispatchEvent(new CustomEvent('leleo-profile-updated', { detail: null }));
   window.dispatchEvent(new Event('leleo-world-updated'));
   window.dispatchEvent(new CustomEvent('leleo-music-updated'));
-  window.dispatchEvent(new Event('leleo-reviews-updated'));
+  window.dispatchEvent(new Event('leleo-planner-updated'));
 
   return {
     applied,

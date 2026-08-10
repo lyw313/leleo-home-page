@@ -3,13 +3,13 @@
     <div class="about-panel__title">{{ about.title || '关于我' }}</div>
     <p v-if="about.summary" class="about-panel__summary">{{ about.summary }}</p>
 
-    <button type="button" class="about-panel__cta" @click="$emit('open-reviews')">
+    <button type="button" class="about-panel__cta" @click="$emit('open-planner')">
       <span class="about-panel__cta-icon" aria-hidden="true">
-        <v-icon icon="mdi-message-text-outline" size="18"></v-icon>
+        <v-icon icon="mdi-calendar-month-outline" size="18"></v-icon>
       </span>
       <span class="about-panel__cta-copy">
-        <span class="about-panel__cta-main">大家的评价</span>
-        <span class="about-panel__cta-sub">点击查看 / 写下你的评论</span>
+        <span class="about-panel__cta-main">学习计划本</span>
+        <span class="about-panel__cta-sub">按日期写计划 / 日记</span>
       </span>
       <span class="about-panel__cta-arrow" aria-hidden="true">
         <v-icon icon="mdi-chevron-right" size="20"></v-icon>
@@ -25,7 +25,7 @@ export default {
     about: { type: Object, default: null },
     maxWidth: { type: [Number, String], default: 300 },
   },
-  emits: ['open-reviews'],
+  emits: ['open-planner'],
 };
 </script>
 

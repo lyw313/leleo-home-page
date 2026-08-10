@@ -106,12 +106,6 @@ const config = {
 	aboutMe: {
 		title: '关于我',
 		summary: '一个爱写代码、也爱折腾生活的人。不完美，但认真。',
-		reviews: [
-			{ name: '同学 A', relation: '大学同学', text: '靠谱，答应的事基本都能做成，熬夜改 bug 也从不叫苦。' },
-			{ name: '朋友 B', relation: '好友', text: '一起打球很带劲，输了也不甩锅，人挺真的。' },
-			{ name: '同事 C', relation: '项目搭档', text: '前端细节抠得很细，沟通顺畅，合作很舒服。' },
-			{ name: '家人', relation: '家人', text: '回家就爱鼓捣电脑，但陪家人的时候也很用心。' },
-		],
 	},
 
 	// 右侧内容模块：运动 / 游戏 / 项目 / 生活
@@ -237,7 +231,7 @@ const config = {
 	// 各页面背景图
 	pageBackgrounds: {
 		blog: '/img/wallpaper/static/书房夜晚/image.png',
-		reviews: '/img/world/life/sunset.png',
+		planner: '/img/world/life/sunset.png',
 		music: '/img/world/life/moon-town.png',
 	},
 

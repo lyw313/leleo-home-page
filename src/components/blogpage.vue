@@ -11,22 +11,28 @@
     </div>
     <div class="blog-page__shell">
       <header class="blog-page__top">
-        <button type="button" class="blog-page__ghost" @click="$emit('back')">
+        <button type="button" class="blog-page__ghost" @click="onTopBack">
           <v-icon icon="mdi-arrow-left" size="18"></v-icon>
-          返回主页
+          {{ topBackLabel }}
         </button>
 
         <div class="blog-page__brand">
           <h1>学习博客</h1>
-          <p>记录学习笔记 · 分享项目与实践</p>
+          <p>{{ mode === 'list' ? '用收藏夹分区管理笔记与项目' : '记录学习笔记 · 分享项目与实践' }}</p>
         </div>
 
         <div class="blog-page__top-actions">
           <template v-if="mode === 'list'">
-            <button v-if="unlocked" type="button" class="blog-page__primary" @click="goWrite">
-              <v-icon icon="mdi-pencil-plus-outline" size="18"></v-icon>
-              写记录
-            </button>
+            <template v-if="unlocked">
+              <button type="button" class="blog-page__ghost" @click="promptNewFolder">
+                <v-icon icon="mdi-folder-plus-outline" size="18"></v-icon>
+                新建收藏夹
+              </button>
+              <button type="button" class="blog-page__primary" @click="goWrite">
+                <v-icon icon="mdi-pencil-plus-outline" size="18"></v-icon>
+                写记录
+              </button>
+            </template>
             <button v-else type="button" class="blog-page__ghost" @click="showLogin = !showLogin">
               <v-icon icon="mdi-lock-outline" size="18"></v-icon>
               管理
@@ -66,35 +72,95 @@
 
       <!-- 列表页 -->
       <section v-if="mode === 'list'" class="blog-page__list-view">
+        <nav class="blog-page__breadcrumb" aria-label="收藏夹路径">
+          <button
+            type="button"
+            class="blog-page__crumb"
+            @click="openFolder(null)"
+          >全部收藏</button>
+          <template v-for="crumb in breadcrumbItems" :key="crumb.id">
+            <span class="blog-page__crumb-sep">›</span>
+            <button
+              type="button"
+              class="blog-page__crumb"
+              :class="{ 'is-drop': dropTargetId === crumb.id }"
+              @click="openFolder(crumb.id)"
+              @dragover.prevent="onDragOverFolder(crumb.id)"
+              @dragleave="onDragLeaveFolder(crumb.id)"
+              @drop.prevent="onDropToFolder(crumb.id)"
+            >{{ crumb.name }}</button>
+          </template>
+        </nav>
+
+        <div v-if="showNewFolderInput" class="blog-page__newfolder">
+          <input
+            v-model="newFolderName"
+            class="blog-page__input blog-page__input--inline"
+            type="text"
+            maxlength="40"
+            placeholder="收藏夹名称"
+            @keydown.enter="confirmNewFolder"
+          />
+          <button type="button" class="blog-page__primary" :disabled="!newFolderName.trim()" @click="confirmNewFolder">创建</button>
+          <button type="button" class="blog-page__ghost" @click="cancelNewFolder">取消</button>
+          <span v-if="folderHint" class="blog-page__error">{{ folderHint }}</span>
+        </div>
+
         <div class="blog-page__filters">
-          <button
-            type="button"
-            class="blog-page__chip"
-            :class="{ active: filter === 'all' }"
-            @click="filter = 'all'"
-          >全部</button>
-          <button
-            type="button"
-            class="blog-page__chip"
-            :class="{ active: filter === 'note' }"
-            @click="filter = 'note'"
-          >学习笔记</button>
-          <button
-            type="button"
-            class="blog-page__chip"
-            :class="{ active: filter === 'project' }"
-            @click="filter = 'project'"
-          >项目分享</button>
+          <label class="blog-page__filter-label">
+            <span>类型查找</span>
+            <select v-model="filter" class="blog-page__select blog-page__select--filter">
+              <option value="all">全部</option>
+              <option value="note">学习笔记</option>
+              <option value="project">项目分享</option>
+            </select>
+          </label>
           <input
             v-model="keyword"
             class="blog-page__search"
             type="search"
             placeholder="搜索标题 / 标签 / 内容"
           />
+          <span v-if="unlocked && draggingPostId" class="blog-page__drag-tip">拖到收藏夹卡片即可移动</span>
         </div>
 
-        <div v-if="!filteredPosts.length" class="blog-page__empty">
-          暂无记录。{{ unlocked ? '点右上角「写记录」开始第一篇。' : '等作者更新学习笔记和项目分享。' }}
+        <div v-if="childFolders.length" class="blog-page__folder-grid">
+          <article
+            v-for="folder in childFolders"
+            :key="folder.id"
+            class="blog-folder-card"
+            :class="{ 'is-drop': dropTargetId === folder.id }"
+            @click="openFolder(folder.id)"
+            @dragover.prevent="onDragOverFolder(folder.id)"
+            @dragleave="onDragLeaveFolder(folder.id)"
+            @drop.prevent="onDropToFolder(folder.id)"
+          >
+            <div class="blog-folder-card__icon">
+              <v-icon icon="mdi-folder-outline" size="40"></v-icon>
+            </div>
+            <div class="blog-folder-card__body">
+              <h3 class="blog-folder-card__name">{{ folder.name }}</h3>
+              <p class="blog-folder-card__meta">
+                {{ folderSubCount(folder.id) }} 个子收藏 · {{ folderPostCount(folder.id) }} 篇记录
+              </p>
+            </div>
+            <div v-if="unlocked" class="blog-folder-card__ops" @click.stop>
+              <button type="button" title="重命名" @click="promptRenameFolder(folder)">
+                <v-icon icon="mdi-pencil-outline" size="18"></v-icon>
+              </button>
+              <button type="button" title="删除" @click="deleteFolder(folder.id)">
+                <v-icon icon="mdi-delete-outline" size="18"></v-icon>
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <div v-if="!childFolders.length && !filteredPosts.length" class="blog-page__empty">
+          {{ unlocked
+            ? (currentFolderId
+              ? '这个收藏夹还没有记录，点右上角「写记录」添加。'
+              : '先新建收藏夹，再写记录；每条记录都必须放在某个收藏夹里。')
+            : '等作者更新学习笔记和项目分享。' }}
         </div>
 
         <div class="blog-page__cards">
@@ -102,7 +168,11 @@
             v-for="item in filteredPosts"
             :key="item.id"
             class="blog-card"
-            @click="goRead(item.id)"
+            :class="{ 'is-dragging': draggingPostId === item.id }"
+            :draggable="unlocked"
+            @click="onCardClick(item.id)"
+            @dragstart="onDragStart($event, item)"
+            @dragend="onDragEnd"
           >
             <div class="blog-card__head">
               <span class="blog-card__kind" :class="item.kind">
@@ -221,6 +291,13 @@
           <label class="blog-page__label">项目链接（可选，GitHub / 演示站）</label>
           <input v-model="draft.projectUrl" class="blog-page__input" type="url" maxlength="300" placeholder="https://github.com/xxx/yyy" />
 
+          <label class="blog-page__label">所属收藏夹（必选）</label>
+          <select v-model="draft.folderId" class="blog-page__select" required>
+            <option disabled :value="null">请选择收藏夹</option>
+            <option v-for="opt in folderOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+          </select>
+          <p v-if="!folderOptions.length" class="blog-page__error">请先新建至少一个收藏夹</p>
+
           <label class="blog-page__label">正文</label>
           <blog-editor
             v-model="draft.content"
@@ -243,13 +320,22 @@
 <script>
 import {
   loadBlogPosts,
+  loadBlogFolders,
   getBlogPost,
   addBlogPost,
   updateBlogPost,
   removeBlogPost,
+  addBlogFolder,
+  removeBlogFolder,
+  listChildFolders,
+  listPostsInFolder,
+  getFolderPath,
+  renameBlogFolder,
   formatBlogTime,
   excerpt,
   notifyBlogUpdated,
+  ensurePostsHaveFolders,
+  resolveValidFolderId,
 } from '../utils/blogStore.js';
 import {
   getSiteAuth,
@@ -269,6 +355,7 @@ function emptyDraft() {
     tagsText: '',
     projectUrl: '',
     content: '',
+    folderId: null,
   };
 }
 
@@ -285,6 +372,11 @@ export default {
   data() {
     return {
       posts: [],
+      folders: [],
+      currentFolderId: null,
+      newFolderName: '',
+      folderHint: '',
+      showNewFolderInput: false,
       unlocked: false,
       expiresAt: 0,
       showLogin: false,
@@ -295,6 +387,9 @@ export default {
       draft: emptyDraft(),
       tick: Date.now(),
       timer: null,
+      draggingPostId: '',
+      dropTargetId: '',
+      suppressClick: false,
     };
   },
   computed: {
@@ -351,9 +446,26 @@ export default {
       if ((this.mode !== 'read' && this.mode !== 'edit') || !this.postId) return null;
       return getBlogPost(this.posts, this.postId);
     },
+    breadcrumbItems() {
+      return getFolderPath(this.folders, this.currentFolderId);
+    },
+    childFolders() {
+      return listChildFolders(this.folders, this.currentFolderId);
+    },
+    folderOptions() {
+      return (this.folders || [])
+        .map((f) => {
+          const path = getFolderPath(this.folders, f.id).map((x) => x.name).join(' / ');
+          return { id: f.id, label: path || f.name };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
+    },
     filteredPosts() {
+      // 根目录不直接堆放记录：记录必须在某个收藏夹内
+      if (!this.currentFolderId) return [];
       const kw = this.keyword.trim().toLowerCase();
-      return this.posts.filter((p) => {
+      const inFolder = listPostsInFolder(this.posts, this.currentFolderId);
+      return inFolder.filter((p) => {
         if (this.filter !== 'all' && p.kind !== this.filter) return false;
         if (!kw) return true;
         const blob = `${p.title} ${p.summary} ${p.content} ${(p.tags || []).join(' ')}`.toLowerCase();
@@ -361,7 +473,11 @@ export default {
       });
     },
     canSave() {
-      return this.draft.title.trim() && stripHtml(this.draft.content).trim();
+      return !!(
+        this.draft.title.trim()
+        && stripHtml(this.draft.content).trim()
+        && this.draft.folderId
+      );
     },
     renderedContent() {
       return this.post ? renderBlogHtml(this.post.content) : '';
@@ -373,6 +489,11 @@ export default {
       const h = Math.floor(m / 60);
       const mm = m % 60;
       return h > 0 ? `${h}小时${mm}分后需重新验证` : `${Math.max(1, mm)}分后需重新验证`;
+    },
+    topBackLabel() {
+      if (this.mode !== 'list') return '返回博客';
+      if (this.currentFolderId) return '返回上级';
+      return '返回主页';
     },
   },
   watch: {
@@ -398,16 +519,72 @@ export default {
       this.refreshAuth();
     }, 15000);
     window.addEventListener('leleo-auth-changed', this.refreshAuth);
+    window.addEventListener('leleo-blog-updated', this.reload);
   },
   beforeUnmount() {
     if (this.timer) clearInterval(this.timer);
     window.removeEventListener('leleo-auth-changed', this.refreshAuth);
+    window.removeEventListener('leleo-blog-updated', this.reload);
   },
   methods: {
     formatTime: formatBlogTime,
     excerpt,
     reload() {
-      this.posts = loadBlogPosts((this.config.blogAdmin || {}).seedPosts || []);
+      const posts = loadBlogPosts((this.config.blogAdmin || {}).seedPosts || []);
+      const folders = loadBlogFolders();
+      const ensured = ensurePostsHaveFolders(posts, folders);
+      this.posts = ensured.posts;
+      this.folders = ensured.folders;
+    },
+    openFolder(id) {
+      this.currentFolderId = id || null;
+    },
+    folderSubCount(folderId) {
+      return listChildFolders(this.folders, folderId).length;
+    },
+    folderPostCount(folderId) {
+      return listPostsInFolder(this.posts, folderId).length;
+    },
+    promptNewFolder() {
+      this.refreshAuth();
+      if (!this.unlocked) {
+        this.showLogin = true;
+        return;
+      }
+      this.folderHint = '';
+      this.newFolderName = '';
+      this.showNewFolderInput = true;
+    },
+    confirmNewFolder() {
+      const name = this.newFolderName.trim();
+      if (!name) return;
+      this.folders = addBlogFolder(this.folders, { name, parentId: this.currentFolderId });
+      this.showNewFolderInput = false;
+      this.newFolderName = '';
+      this.folderHint = '';
+    },
+    cancelNewFolder() {
+      this.showNewFolderInput = false;
+      this.newFolderName = '';
+      this.folderHint = '';
+    },
+    promptRenameFolder(folder) {
+      const name = prompt('重命名收藏夹', folder.name);
+      if (name == null) return;
+      const trimmed = name.trim();
+      if (!trimmed || trimmed === folder.name) return;
+      this.folders = renameBlogFolder(this.folders, folder.id, trimmed);
+    },
+    deleteFolder(id) {
+      if (!confirm('删除该收藏夹？子收藏夹会一并删除，其中的记录会移到上级或其他收藏夹。')) return;
+      const folder = this.folders.find((f) => f.id === id);
+      const parentId = folder?.parentId || null;
+      const result = removeBlogFolder(this.folders, this.posts, id);
+      this.folders = result.folders;
+      this.posts = result.posts;
+      if (this.currentFolderId === id || (this.currentFolderId && !this.folders.some((f) => f.id === this.currentFolderId))) {
+        this.currentFolderId = parentId;
+      }
     },
     refreshAuth() {
       const auth = getSiteAuth();
@@ -426,9 +603,13 @@ export default {
           tagsText: (this.post.tags || []).join(', '),
           projectUrl: this.post.projectUrl || '',
           content: this.post.content,
+          folderId: resolveValidFolderId(this.folders, this.post.folderId, this.currentFolderId),
         };
       } else if (this.mode === 'write') {
-        this.draft = emptyDraft();
+        this.draft = {
+          ...emptyDraft(),
+          folderId: resolveValidFolderId(this.folders, this.currentFolderId, this.folders[0]?.id),
+        };
       }
     },
     login() {
@@ -451,11 +632,75 @@ export default {
       this.showLogin = false;
     },
     goList() { this.$emit('go-list'); },
+    onTopBack() {
+      if (this.mode !== 'list') {
+        this.goList();
+        return;
+      }
+      // 在子收藏夹里：先回到上级，不要直接回主页
+      if (this.currentFolderId) {
+        const folder = this.folders.find((f) => f.id === this.currentFolderId);
+        this.currentFolderId = folder?.parentId || null;
+        return;
+      }
+      this.$emit('back');
+    },
+    onDragStart(e, item) {
+      if (!this.unlocked) {
+        e.preventDefault();
+        return;
+      }
+      this.draggingPostId = item.id;
+      try {
+        e.dataTransfer.setData('text/plain', item.id);
+        e.dataTransfer.effectAllowed = 'move';
+      } catch (_) {}
+    },
+    onDragEnd() {
+      this.draggingPostId = '';
+      this.dropTargetId = '';
+      this.suppressClick = true;
+      setTimeout(() => { this.suppressClick = false; }, 80);
+    },
+    onCardClick(id) {
+      if (this.suppressClick) return;
+      this.goRead(id);
+    },
+    onDragOverFolder(folderId) {
+      if (!this.draggingPostId || !folderId) return;
+      this.dropTargetId = folderId;
+    },
+    onDragLeaveFolder(folderId) {
+      if (this.dropTargetId === folderId) this.dropTargetId = '';
+    },
+    onDropToFolder(folderId) {
+      const postId = this.draggingPostId;
+      this.dropTargetId = '';
+      this.draggingPostId = '';
+      if (!postId || !this.unlocked || !folderId) return;
+      const post = getBlogPost(this.posts, postId);
+      if (!post) return;
+      if ((post.folderId || null) === folderId) return;
+      this.posts = updateBlogPost(this.posts, postId, {
+        kind: post.kind,
+        title: post.title,
+        summary: post.summary,
+        tags: post.tags,
+        projectUrl: post.projectUrl,
+        content: post.content,
+        folderId,
+      });
+    },
     goRead(id) { this.$emit('go-read', id); },
     goWrite() {
       this.refreshAuth();
       if (!this.unlocked) {
         this.showLogin = true;
+        return;
+      }
+      if (!this.folders.length) {
+        alert('请先新建一个收藏夹，再写记录。');
+        this.promptNewFolder();
         return;
       }
       this.$emit('go-write');
@@ -475,6 +720,10 @@ export default {
         this.showLogin = true;
         return;
       }
+      if (!this.draft.folderId) {
+        alert('请选择所属收藏夹');
+        return;
+      }
       if (!this.canSave) return;
       const payload = {
         kind: this.draft.kind,
@@ -483,6 +732,7 @@ export default {
         tags: this.draft.tagsText,
         projectUrl: this.draft.projectUrl,
         content: this.draft.content,
+        folderId: this.draft.folderId,
       };
       if (this.mode === 'edit' && this.postId) {
         this.posts = updateBlogPost(this.posts, this.postId, payload);
@@ -647,12 +897,164 @@ export default {
 .blog-page__session { opacity: 0.7; margin-bottom: 0.8rem; }
 .blog-page__tip { opacity: 0.65; }
 .blog-page__error { color: #ffb4b4; }
+.blog-page__breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.35rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+}
+.blog-page__crumb {
+  border: none;
+  background: transparent;
+  color: #b8f0ff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.15rem 0.25rem;
+}
+.blog-page__crumb:hover { text-decoration: underline; }
+.blog-page__crumb.is-drop {
+  background: rgba(184, 240, 255, 0.22);
+  outline: 1px dashed rgba(184, 240, 255, 0.7);
+  border-radius: 8px;
+}
+.blog-page__crumb-sep {
+  opacity: 0.45;
+  user-select: none;
+}
+.blog-page__newfolder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 14px;
+  background: rgba(18, 22, 30, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.blog-page__input--inline {
+  flex: 1 1 160px;
+  margin-bottom: 0;
+}
+.blog-page__folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+.blog-folder-card {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-height: 5.5rem;
+  padding: 1.1rem 1.15rem;
+  border-radius: 18px;
+  background: rgba(18, 22, 30, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.blog-folder-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(184, 240, 255, 0.4);
+  background: rgba(24, 30, 40, 0.9);
+}
+.blog-folder-card.is-drop {
+  border-color: rgba(184, 240, 255, 0.8);
+  background: rgba(184, 240, 255, 0.18);
+  box-shadow: 0 0 0 2px rgba(184, 240, 255, 0.3);
+}
+.blog-folder-card__icon {
+  color: #ffe8a0;
+  opacity: 0.95;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(255, 232, 160, 0.1);
+}
+.blog-folder-card__body {
+  flex: 1;
+  min-width: 0;
+}
+.blog-folder-card__name {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 720;
+  line-height: 1.3;
+}
+.blog-folder-card__meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  opacity: 0.62;
+}
+.blog-folder-card__ops {
+  display: flex;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+.blog-folder-card__ops button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.blog-folder-card__ops button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+.blog-page__select {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+  outline: none;
+  margin-bottom: 0.55rem;
+  color-scheme: dark;
+}
 .blog-page__filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
   margin-bottom: 0.9rem;
   align-items: center;
+}
+.blog-page__filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+.blog-page__filter-label span {
+  white-space: nowrap;
+}
+.blog-page__select--filter {
+  width: auto;
+  min-width: 7.5rem;
+  margin-bottom: 0;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+}
+.blog-page__drag-tip {
+  font-size: 0.72rem;
+  color: #b8f0ff;
+  font-weight: 650;
 }
 .blog-page__chip {
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -689,7 +1091,16 @@ export default {
   background: rgba(18, 22, 30, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.12);
   cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+}
+.blog-card.is-dragging {
+  opacity: 0.45;
+}
+.blog-card[draggable='true'] {
+  cursor: grab;
+}
+.blog-card[draggable='true']:active {
+  cursor: grabbing;
 }
 .blog-card:hover {
   transform: translateY(-2px);

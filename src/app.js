@@ -6,7 +6,7 @@ import tab3 from './components/tabs/tab3.vue';
 import loader from './components/loader.vue';
 import polarchart from './components/polarchart.vue';
 import aboutme from './components/aboutme.vue';
-import reviewspage from './components/reviewspage.vue';
+import plannerpage from './components/plannerpage.vue';
 import spinbuddy from './components/spinbuddy.vue';
 import pageclimber from './components/pageclimber.vue';
 import worldpage from './components/worldpage.vue';
@@ -34,7 +34,7 @@ import { useDisplay } from 'vuetify'
 
 export default {
   components: {
-    tab1,tab2,tab3,loader,homeright,typewriter,polarchart,aboutme,reviewspage,spinbuddy,pageclimber,worldpage,blogpage,minimusic,authchip,profileeditor
+    tab1,tab2,tab3,loader,homeright,typewriter,polarchart,aboutme,plannerpage,spinbuddy,pageclimber,worldpage,blogpage,minimusic,authchip,profileeditor
   },
   setup() {
     const { xs,sm,md } = useDisplay();
@@ -254,8 +254,9 @@ export default {
 
     syncPageFromHash() {
       const hash = (location.hash || '').replace(/^#\/?/, '');
-      if (hash === 'reviews') {
-        this.page = 'reviews';
+      if (hash === 'planner' || hash === 'reviews') {
+        // reviews 旧链接兼容跳转到学习计划本
+        this.page = 'planner';
         this.worldKey = '';
         this.blogMode = 'list';
         this.blogPostId = '';
@@ -308,12 +309,16 @@ export default {
       this.blogMode = 'list';
       this.blogPostId = '';
     },
-    openReviews() {
-      location.hash = 'reviews';
-      this.page = 'reviews';
+    openPlanner() {
+      location.hash = 'planner';
+      this.page = 'planner';
       this.worldKey = '';
       this.blogMode = 'list';
       this.blogPostId = '';
+    },
+    openReviews() {
+      // 兼容旧事件名
+      this.openPlanner();
     },
     openWorld(key) {
       location.hash = `world/${key}`;

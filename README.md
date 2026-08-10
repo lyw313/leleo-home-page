@@ -27,7 +27,7 @@
 
 ### English Summary
 
-A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism dashboard UI: profile & skills, a “My World” dial (life / sport / game / project), study blog with rich-text editor (tables / attachments / numbered headings), guestbook reviews, EmailJS contact form, mini music player, local data export/import, and playful interactive mascots.  
+A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism dashboard UI: profile & skills, a “My World” dial (life / sport / game / project), study blog with nested folders & rich-text editor, learning planner calendar, EmailJS contact form, mini music player, local data export/import, and playful interactive mascots.  
 
 **[Live demo →](https://strong-kangaroo-fb7c41.netlify.app/)** · Customize mostly via `src/config.js` · `npm install && npm run dev`
 
@@ -59,7 +59,7 @@ A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism
 
 **👉 [https://strong-kangaroo-fb7c41.netlify.app/](https://strong-kangaroo-fb7c41.netlify.app/)**
 
-托管在 Netlify，打开即可浏览首页、我的世界、学习博客、评价页、音乐播放与互动彩蛋等完整功能。
+托管在 Netlify，打开即可浏览首页、我的世界、学习博客、学习计划本、音乐播放与互动彩蛋等完整功能。
 
 ### 演示视频
 
@@ -83,9 +83,11 @@ A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism
 
 <img src="./img/preview/world-lightbox.png" width="520" alt="世界模块灯箱" />
 
-**大家的评价**
+**学习计划本**
 
-<img src="./img/preview/reviews.png" width="900" alt="大家的评价" />
+<img src="./docs/screenshots/homepage.png" width="900" alt="首页与计划本入口" />
+
+> 「大家的评价」已改为「学习计划本」：日历排知识点、写当日计划与日记。
 
 ---
 
@@ -96,7 +98,9 @@ A configurable **Vue 3 + Vite + Vuetify** personal homepage with a glassmorphism
 - 个人简介、兴趣标签、技能进度
 - 「生活 / 运动 / 游戏 / 项目」四象限内容空间
 - 学习博客笔记与项目分享
-- 留言（EmailJS 发信）与「大家的评价」
+- 留言（EmailJS 发信）与「学习计划本」
+- 学习博客：嵌套收藏夹、类型筛选、拖拽归档
+- 本地数据导出 / 导入（换电脑、从 Netlify 迁到本机）
 - 本地歌单与迷你播放器
 - 清屏、壁纸，以及下方这些**互动小彩蛋**
 
@@ -124,7 +128,7 @@ flowchart TB
   end
 
   subgraph App["Vue 3 + Vite + Vuetify"]
-    Pages["页面层<br/>首页 / 博客 / 世界 / 评价 / 音乐"]
+    Pages["页面层<br/>首页 / 博客 / 世界 / 计划本 / 音乐"]
     Auth["权限 AuthChip"]
     Editor["博客富文本 BlogEditor"]
     Backup["数据备份导入导出"]
@@ -354,7 +358,7 @@ emailjs: {
 
 说明：
 
-- 备份包含博客、个人资料、我的世界、评价、歌单，以及 IndexedDB 中的本地音乐。  
+- 备份包含博客、收藏夹、个人资料、我的世界、学习计划本、歌单，以及 IndexedDB 中的本地音乐。  
 - **覆盖导入**会替换当前浏览器里对应数据；**合并导入**会按博客 id 合并，其它项仅在本地为空时写入。  
 - 业务数据不在 Netlify 服务器上；部署新前端代码不会自动带上旧浏览器里的内容，需要手动导出/导入。
 

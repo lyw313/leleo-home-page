@@ -54,7 +54,7 @@
       <div class="auth-modal__card auth-modal__card--wide">
         <h3>站点数据备份</h3>
         <p>
-          博客、资料、我的世界、留言、歌单都存在当前浏览器里。换电脑 / 换域名（例如从 Netlify 到本地）时，
+          博客、资料、我的世界、学习计划本、歌单都存在当前浏览器里。换电脑 / 换域名（例如从 Netlify 到本地）时，
           先在旧站「导出」，再到新站「导入」。
         </p>
         <ul class="auth-backup__tips">

@@ -67,12 +67,21 @@
                   <div class="leleo-left-username">{{ configdata.username }}</div>
               </div>
 
-                <aboutme
-                  class="building-solid"
-                  :about="profileAbout || configdata.aboutMe"
-                  :max-width="xs?270:300"
-                  @open-reviews="openReviews"
-                />
+                  <button
+                    type="button"
+                    class="planner-entry building-solid"
+                    :style="{ maxWidth: (xs?270:300) + 'px' }"
+                    @click="openPlanner"
+                  >
+                    <span class="planner-entry__icon" aria-hidden="true">
+                      <v-icon icon="mdi-calendar-month-outline" size="22"></v-icon>
+                    </span>
+                    <span class="planner-entry__copy">
+                      <span class="planner-entry__main">学习计划本</span>
+                      <span class="planner-entry__sub">按日期安排知识点 · 写计划日记</span>
+                    </span>
+                    <v-icon icon="mdi-chevron-right" size="20" class="planner-entry__arrow"></v-icon>
+                  </button>
 
                 <div
                   v-if="(personalizedtags && personalizedtags.length) || isAdmin"
@@ -143,10 +152,9 @@
         </v-row>
     </div>
 
-    <reviewspage
-      v-if="!isClearScreen && page === 'reviews'"
-      :seed="configdata.aboutMe?.reviews || []"
-      :background="configdata.pageBackgrounds?.reviews"
+    <plannerpage
+      v-if="!isClearScreen && page === 'planner'"
+      :background="configdata.pageBackgrounds?.planner || configdata.pageBackgrounds?.reviews"
       @back="goHome"
     />
 
@@ -380,6 +388,56 @@
     text-align: left;
     display: flex;
     flex-direction: column;
+  }
+
+  .planner-entry {
+    width: 100%;
+    max-width: 300px;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    text-align: left;
+    padding: 0.9rem 0.95rem;
+    box-sizing: border-box;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: linear-gradient(135deg, rgba(255, 236, 160, 0.22), rgba(170, 240, 255, 0.16));
+    backdrop-filter: blur(var(--leleo-blur));
+    color: var(--leleo-vcard-color);
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .planner-entry:hover {
+    transform: translateY(-1px);
+    background: linear-gradient(135deg, rgba(255, 236, 160, 0.3), rgba(170, 240, 255, 0.22));
+  }
+  .planner-entry__icon {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.14);
+    flex-shrink: 0;
+  }
+  .planner-entry__copy {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+  }
+  .planner-entry__main {
+    font-size: 0.95rem;
+    font-weight: 750;
+  }
+  .planner-entry__sub {
+    font-size: 0.72rem;
+    opacity: 0.78;
+  }
+  .planner-entry__arrow {
+    opacity: 0.7;
+    flex-shrink: 0;
   }
 
   .tags-panel__title {
