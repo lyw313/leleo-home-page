@@ -35,7 +35,20 @@
         <input v-model="draft.title" class="world-page__input" type="text" maxlength="80" placeholder="标题" />
         <input v-model="draft.text" class="world-page__input" type="text" maxlength="300" placeholder="简介 / 说明" />
         <input v-model="draft.image" class="world-page__input" type="text" maxlength="400" placeholder="图片地址（可选，如 /img/world/sport/xxx.png）" />
-        <input v-model="draft.link" class="world-page__input" type="url" maxlength="400" placeholder="外链（可选）" />
+        <input
+          v-model="draft.website"
+          class="world-page__input"
+          type="url"
+          maxlength="400"
+          placeholder="访问网页（可选，如 https://xxx.com）"
+        />
+        <input
+          v-model="draft.repo"
+          class="world-page__input"
+          type="url"
+          maxlength="400"
+          placeholder="GitHub 仓库（可选，如 https://github.com/xxx/yyy）"
+        />
         <button type="button" class="world-page__add" :disabled="!canAdd" @click="addItem">保存</button>
       </section>
 
@@ -43,10 +56,9 @@
         <article
           v-for="(item, idx) in items"
           :key="item.id || idx"
-          class="world-card is-clickable"
+          class="world-card"
           :class="{ 'has-image': !!item.image }"
           :style="{ '--delay': `${idx * 0.06}s`, '--accent': accent }"
-          @click="openViewer(item)"
         >
           <button
             v-if="isAdmin"
@@ -64,6 +76,44 @@
             <div class="world-card__index">{{ String(idx + 1).padStart(2, '0') }}</div>
             <h2 class="world-card__title">{{ item.title }}</h2>
             <p v-if="item.text" class="world-card__text">{{ item.text }}</p>
+            <div class="world-card__actions">
+              <a
+                v-if="item.website"
+                class="world-card__btn world-card__btn--link"
+                :href="item.website"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                项目网址
+              </a>
+              <button
+                v-else
+                type="button"
+                class="world-card__btn world-card__btn--disabled"
+                disabled
+                title="未填写网页地址"
+              >
+                项目网址
+              </button>
+              <a
+                v-if="item.repo"
+                class="world-card__btn"
+                :href="item.repo"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                查看仓库
+              </a>
+              <button
+                v-else
+                type="button"
+                class="world-card__btn world-card__btn--disabled"
+                disabled
+                title="未填写 GitHub 仓库"
+              >
+                查看仓库
+              </button>
+            </div>
           </div>
         </article>
       </section>
@@ -103,15 +153,28 @@
             <div class="world-viewer__meta">
               <h2>{{ viewer.title }}</h2>
               <p v-if="viewer.text">{{ viewer.text }}</p>
-              <button
-                v-if="viewer.link"
-                type="button"
-                class="world-viewer__link"
-                @click="openLink(viewer.link)"
-              >
-                打开链接
-                <v-icon icon="mdi-arrow-top-right" size="16"></v-icon>
-              </button>
+              <div class="world-viewer__actions">
+                <a
+                  v-if="viewer.website"
+                  class="world-viewer__link"
+                  :href="viewer.website"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  项目网址
+                  <v-icon icon="mdi-arrow-top-right" size="16"></v-icon>
+                </a>
+                <a
+                  v-if="viewer.repo"
+                  class="world-viewer__link"
+                  :href="viewer.repo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  查看仓库
+                  <v-icon icon="mdi-github" size="16"></v-icon>
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -147,7 +210,7 @@ export default {
     return {
       worldMap: {},
       showForm: false,
-      draft: { title: '', text: '', image: '', link: '' },
+      draft: { title: '', text: '', image: '', website: '', repo: '' },
       viewer: null,
     };
   },
@@ -201,10 +264,6 @@ export default {
     onKey(e) {
       if (e.key === 'Escape' && this.viewer) this.closeViewer();
     },
-    openLink(link) {
-      if (!link) return;
-      window.open(link, '_blank', 'noopener');
-    },
     sparkleStyle(n) {
       const left = ((n * 37) % 100);
       const top = ((n * 53) % 100);
@@ -221,7 +280,7 @@ export default {
     addItem() {
       if (!this.isAdmin || !this.canAdd || !this.module?.key) return;
       this.worldMap = addWorldItem(this.worldMap, this.module.key, this.draft);
-      this.draft = { title: '', text: '', image: '', link: '' };
+      this.draft = { title: '', text: '', image: '', website: '', repo: '' };
       this.showForm = false;
     },
     removeItem(id) {
@@ -367,23 +426,20 @@ export default {
   animation: world-card-in 0.35s ease both;
   animation-delay: var(--delay);
   overflow: hidden;
-}
-.world-card.has-image {
-  padding: 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-}
-.world-card.is-clickable {
-  cursor: pointer;
   transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
 }
-.world-card.is-clickable:hover {
+.world-card:hover {
   transform: translateY(-4px) scale(1.01);
   border-color: color-mix(in srgb, var(--accent) 55%, rgba(255, 255, 255, 0.14));
   box-shadow:
     0 18px 40px rgba(0, 0, 0, 0.28),
     0 0 24px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.world-card.has-image {
+  padding: 0;
+  min-height: 0;
 }
 .world-card__del {
   position: absolute;
@@ -417,6 +473,10 @@ export default {
 }
 .world-card__body {
   padding: 0.85rem 0.95rem 1rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 .world-card:not(.has-image) .world-card__body {
   padding: 0;
@@ -439,6 +499,39 @@ export default {
   font-size: 0.84rem;
   line-height: 1.55;
   color: rgba(244, 246, 248, 0.78);
+}
+.world-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+.world-card__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f6f8;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: none;
+  font: inherit;
+}
+.world-card__btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.world-card__btn--link {
+  border-color: color-mix(in srgb, var(--accent) 55%, rgba(255, 255, 255, 0.22));
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: #fff;
+}
+.world-card__btn--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .world-page__empty {
   margin-top: 1rem;
@@ -592,6 +685,13 @@ export default {
   color: #1a1f28;
   font-weight: 750;
   cursor: pointer;
+  text-decoration: none;
+}
+.world-viewer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.55rem;
 }
 
 .world-view-enter-active,

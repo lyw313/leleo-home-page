@@ -4,7 +4,7 @@
           <v-row align="start" class="home-right-top">
             <v-col cols="12" md="8" class="home-right-main">
               <typewriter class="quote-block building-solid"></typewriter>
-              <div class="mail-box v-card building-solid" :class="{ 'mail-box--compact': xs || sm }">
+              <div v-if="!xs" class="mail-box v-card building-solid">
                 <div class="mail-box__label">
                   <v-icon icon="mdi-email-fast-outline" size="18"></v-icon>
                   给我发消息
@@ -40,20 +40,27 @@
                 </div>
               </div>
 
-              <life-modules class="home-right-world" :modules="configdata.lifeModules || []" />
+              <life-modules v-if="!xs" class="home-right-world" :modules="configdata.lifeModules || []" />
             </v-col>
-            <v-col cols="12" md="4" align="center">
-              <v-card class="clock-card building-solid" hover
-                >
-                  <template v-slot:title >
+            <v-col cols="12" md="4" class="home-right-side">
+              <div v-if="!xs" ref="rightStack" class="home-right-stack">
+                <v-card class="clock-card building-solid" hover>
+                  <template v-slot:title>
                     <span class="leleo-card-title clock-font">{{formattedTime}}</span>
                   </template>
                   <template v-slot:subtitle>
                     <span class="clock-date">{{formattedDate}}</span>
                   </template>
                   <turntable :color1="configdata.color.turntablecolor1" :color2="configdata.color.turntablecolor2" />
-              </v-card>
+                </v-card>
+                <blog-panel
+                  :config="configdata"
+                  @open-blog-home="$emit('open-blog-home')"
+                  @open-blog="$emit('open-blog', $event)"
+                />
+              </div>
               <blog-panel
+                v-else
                 :config="configdata"
                 @open-blog-home="$emit('open-blog-home')"
                 @open-blog="$emit('open-blog', $event)"
@@ -85,11 +92,25 @@ export default {
 			mailMessage: '',
 			mailSending: false,
 			mailStatus: '',
+			stackObserver: null,
 		}
 	},
     setup() {
       const { xs,sm,md } = useDisplay();
       return {xs,sm,md};
+    },
+    mounted() {
+      this.syncWidgetWidth();
+      this.$nextTick(() => this.observeStackWidth());
+    },
+    updated() {
+      this.syncWidgetWidth();
+    },
+    beforeUnmount() {
+      if (this.stackObserver) {
+        this.stackObserver.disconnect();
+        this.stackObserver = null;
+      }
     },
 	computed: {
 		contactEmail() {
@@ -107,6 +128,22 @@ export default {
 		},
 	},
     methods:{
+	  syncWidgetWidth() {
+		const el = this.$refs.rightStack;
+		if (!el || typeof el.getBoundingClientRect !== 'function') return;
+		const w = Math.round(el.getBoundingClientRect().width);
+		if (w > 0) {
+		  document.documentElement.style.setProperty('--leleo-widget-width', `${w}px`);
+		}
+	  },
+	  observeStackWidth() {
+		const el = this.$refs.rightStack;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		if (this.stackObserver) this.stackObserver.disconnect();
+		this.stackObserver = new ResizeObserver(() => this.syncWidgetWidth());
+		this.stackObserver.observe(el);
+		this.syncWidgetWidth();
+	  },
 	  parseEmailjsError(err) {
 		const raw = String(err?.text || err?.message || err || '');
 		if (/wrong version number|SSL routines|tls_validate/i.test(raw)) {
@@ -177,6 +214,37 @@ export default {
 <style scoped>
 @import url(/css/app.less);
 @import url(/css/mobile.less);
+
+/* 手机端精简：博客入口 */
+.m-blog-entry {
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-align: left;
+  padding: 0.9rem 0.95rem;
+  box-sizing: border-box;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(135deg, rgba(255, 236, 160, 0.22), rgba(170, 240, 255, 0.16));
+  backdrop-filter: blur(var(--leleo-blur, 5px));
+  color: var(--leleo-vcard-color, #fff);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.m-blog-entry:hover { transform: translateY(-1px); }
+.m-blog-entry__icon {
+  width: 2.2rem; height: 2.2rem;
+  border-radius: 12px;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  flex-shrink: 0;
+}
+.m-blog-entry__copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.m-blog-entry__main { font-size: 0.95rem; font-weight: 750; }
+.m-blog-entry__sub { font-size: 0.72rem; opacity: 0.78; }
+
 .glass-list {
 	background: transparent !important;
 	backdrop-filter: blur(var(--leleo-blur));
@@ -187,7 +255,32 @@ export default {
 .clock-card {
 	user-select: none;
 	-webkit-user-select: none;
-	margin: 0.15rem 0.75rem 0.35rem;
+	width: 100%;
+	margin: 0;
+	box-sizing: border-box;
+}
+.home-right-side {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	padding-right: 0.35rem !important;
+}
+.home-right-stack {
+	/* 撑满右侧栏，吃掉右边空隙；歌单同步此宽 */
+	width: 100%;
+	max-width: none;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0.45rem;
+	margin: 0.15rem 0 0.35rem;
+	box-sizing: border-box;
+}
+.home-right-stack :deep(.blog-panel) {
+	width: 100%;
+	max-width: none;
+	margin: 0;
+	box-sizing: border-box;
 }
 .clock-date {
 	font-weight: bold;

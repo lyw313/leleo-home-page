@@ -1,3 +1,5 @@
+import { pullFromServer, pushToServer } from './serverSync.js';
+
 const POSTS_KEY = 'leleo-blog-posts-v3';
 const FOLDERS_KEY = 'leleo-blog-folders-v1';
 const AUTH_KEY = 'leleo-blog-auth-v1';
@@ -28,7 +30,7 @@ function normalizePosts(list = []) {
   return list
     .map((item, index) => {
       const title = String(item.title || '未命名记录').trim().slice(0, 120);
-      const content = String(item.content || '').trim().slice(0, 120000);
+      const content = String(item.content || '').trim().slice(0, 500000);
       const summary = String(item.summary || excerpt(content, 120)).trim().slice(0, 200);
       const folderId = item.folderId == null || item.folderId === '' ? null : String(item.folderId);
       return {
@@ -84,6 +86,93 @@ export function excerpt(content = '', len = 80) {
   return `${text.slice(0, len)}…`;
 }
 
+function writeBlogCache(posts, folders) {
+  try {
+    localStorage.setItem(POSTS_KEY, JSON.stringify(normalizePosts(posts)));
+  } catch (_) {}
+  try {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(normalizeFolders(folders)));
+  } catch (_) {}
+}
+
+function mergeFolders(a = [], b = []) {
+  const map = new Map();
+  [...a, ...b].forEach((f) => map.set(f.id, f));
+  return normalizeFolders([...map.values()]);
+}
+
+/**
+ * 从 PostgreSQL 拉取博客；换浏览器 / 清缓存后靠这个恢复。
+ * 本地为空时以服务器为准；两边都有则按 updatedAt 合并。
+ */
+export async function hydrateBlogFromServer(seedPosts = []) {
+  const localPosts = loadBlogPosts(seedPosts);
+  const localFolders = loadBlogFolders();
+  const local = { posts: localPosts, folders: localFolders };
+
+  return pullFromServer('blog', local, (loc, remote) => {
+    const remoteFolders = normalizeFolders(remote.folders || []);
+    const remotePosts = normalizePosts(remote.posts || []);
+    const remoteHas = remotePosts.length > 0 || remoteFolders.length > 0;
+    const localEmpty = loc.posts.length === 0 && loc.folders.length === 0;
+
+    let nextFolders;
+    let nextPosts;
+
+    if (remoteHas && localEmpty) {
+      // 换浏览器：服务器权威
+      nextFolders = remoteFolders.length ? remoteFolders : ensureDefaultFolder([], { persist: false });
+      const ids = new Set(nextFolders.map((f) => f.id));
+      const fallback = nextFolders[0]?.id || null;
+      nextPosts = remotePosts.map((p) => ({
+        ...p,
+        folderId: p.folderId && ids.has(p.folderId) ? p.folderId : fallback,
+      }));
+    } else {
+      nextFolders = mergeFolders(loc.folders, remoteFolders);
+      if (!nextFolders.length) nextFolders = ensureDefaultFolder([], { persist: false });
+      const ids = new Set(nextFolders.map((f) => f.id));
+      const fallback = nextFolders[0]?.id || null;
+      const byId = new Map(loc.posts.map((p) => [p.id, p]));
+      remotePosts.forEach((p) => {
+        const old = byId.get(p.id);
+        if (!old || (p.updatedAt || 0) >= (old.updatedAt || 0)) {
+          byId.set(p.id, {
+            ...p,
+            folderId: p.folderId && ids.has(p.folderId) ? p.folderId : fallback,
+          });
+        }
+      });
+      nextPosts = [...byId.values()].map((p) => ({
+        ...p,
+        folderId: p.folderId && ids.has(p.folderId) ? p.folderId : fallback,
+      }));
+    }
+
+    const same = JSON.stringify({ posts: nextPosts, folders: nextFolders })
+      === JSON.stringify({ posts: loc.posts, folders: loc.folders });
+    if (same) {
+      if (!remoteHas && (loc.posts.length || loc.folders.length)) {
+        pushToServer('blog', { posts: loc.posts, folders: loc.folders });
+      }
+      return { posts: loc.posts, folders: loc.folders };
+    }
+
+    // 只写缓存，不在这里 push（避免未登录 401；登录后由 syncLocalToServer 负责）
+    writeBlogCache(nextPosts, nextFolders);
+    notifyBlogUpdated();
+    return { posts: nextPosts, folders: nextFolders };
+  });
+}
+
+/** @deprecated 兼容旧调用：同步返回本地缓存，并触发后台 hydrate */
+export function loadBlogState(seedPosts = []) {
+  const posts = loadBlogPosts(seedPosts);
+  const folders = loadBlogFolders().length ? loadBlogFolders() : ensureDefaultFolder([]);
+  hydrateBlogFromServer(seedPosts).catch(() => {});
+  return { posts, folders };
+}
+
 export function loadBlogPosts(seed = []) {
   try {
     const raw = localStorage.getItem(POSTS_KEY);
@@ -95,10 +184,17 @@ export function loadBlogPosts(seed = []) {
   return normalizePosts(seed);
 }
 
-export function saveBlogPosts(list) {
+/**
+ * 写入 localStorage，并尝试推到服务端。
+ * @returns {Promise<{ posts: array, synced: boolean }>}
+ */
+export async function saveBlogPosts(list) {
+  const next = normalizePosts(list);
   try {
-    localStorage.setItem(POSTS_KEY, JSON.stringify(normalizePosts(list)));
+    localStorage.setItem(POSTS_KEY, JSON.stringify(next));
   } catch (_) {}
+  const remote = await pushToServer('blog', { posts: next, folders: loadBlogFolders() });
+  return { posts: next, synced: !!remote };
 }
 
 export function loadBlogFolders() {
@@ -112,11 +208,12 @@ export function loadBlogFolders() {
   return [];
 }
 
-export function saveBlogFolders(list) {
+export async function saveBlogFolders(list) {
   const next = normalizeFolders(list);
   try {
     localStorage.setItem(FOLDERS_KEY, JSON.stringify(next));
   } catch (_) {}
+  await pushToServer('blog', { posts: loadBlogPosts(), folders: next });
   window.dispatchEvent(new Event('leleo-blog-updated'));
   return next;
 }
@@ -169,10 +266,10 @@ export function collectDescendantFolderIds(folders, folderId) {
   return ids;
 }
 
-export function ensureDefaultFolder(folders = []) {
+export function ensureDefaultFolder(folders = [], { persist = true } = {}) {
   const list = normalizeFolders(folders);
   if (list.length) return list;
-  return saveBlogFolders([
+  const created = normalizeFolders([
     {
       id: `f-default-${Date.now()}`,
       name: '默认收藏',
@@ -180,6 +277,13 @@ export function ensureDefaultFolder(folders = []) {
       createdAt: Date.now(),
     },
   ]);
+  if (!persist) return created;
+  try {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(created));
+  } catch (_) {}
+  // 不阻塞 hydrate；后台推一次即可
+  pushToServer('blog', { posts: loadBlogPosts(), folders: created });
+  return created;
 }
 
 export function resolveValidFolderId(folders, folderId, fallbackId = null) {
@@ -191,7 +295,9 @@ export function resolveValidFolderId(folders, folderId, fallbackId = null) {
 
 /** 把无收藏夹 / 失效收藏夹的记录归入有效收藏夹 */
 export function ensurePostsHaveFolders(posts = [], folders = []) {
-  const folderList = ensureDefaultFolder(folders);
+  // 空库时不要立刻落盘「默认收藏」，否则会挡住从服务器 hydrate，甚至覆盖 PG
+  const shouldPersist = (folders || []).length > 0 || (posts || []).length > 0;
+  const folderList = ensureDefaultFolder(folders, { persist: shouldPersist });
   const ids = new Set(folderList.map((f) => f.id));
   const fallback = folderList[0]?.id || null;
   let changed = false;
@@ -203,13 +309,13 @@ export function ensurePostsHaveFolders(posts = [], folders = []) {
     }
     return p;
   });
-  if (changed) saveBlogPosts(next);
+  if (changed && shouldPersist) saveBlogPosts(next);
   return { posts: normalizePosts(next), folders: folderList, changed };
 }
 
 function buildPayload(payload = {}) {
   const now = Date.now();
-  const content = String(payload.content || '').trim().slice(0, 120000);
+  const content = String(payload.content || '').trim().slice(0, 500000);
   const projectUrl = normalizeUrl(payload.projectUrl || '');
   const folderId = payload.folderId == null || payload.folderId === '' ? null : String(payload.folderId);
   return {
@@ -224,7 +330,7 @@ function buildPayload(payload = {}) {
   };
 }
 
-export function addBlogPost(list, payload) {
+export async function addBlogPost(list, payload) {
   const now = Date.now();
   const body = buildPayload(payload);
   if (!body.folderId) {
@@ -238,12 +344,12 @@ export function addBlogPost(list, payload) {
     },
     ...list,
   ];
-  saveBlogPosts(next);
+  const { posts, synced } = await saveBlogPosts(next);
   notifyBlogUpdated();
-  return normalizePosts(next);
+  return { posts, synced };
 }
 
-export function updateBlogPost(list, id, payload) {
+export async function updateBlogPost(list, id, payload) {
   const body = buildPayload(payload);
   if (!body.folderId) {
     throw new Error('记录必须选择收藏夹');
@@ -256,19 +362,19 @@ export function updateBlogPost(list, id, payload) {
       createdAt: item.createdAt,
     };
   });
-  saveBlogPosts(next);
+  const { posts, synced } = await saveBlogPosts(next);
   notifyBlogUpdated();
-  return normalizePosts(next);
+  return { posts, synced };
 }
 
-export function removeBlogPost(list, id) {
+export async function removeBlogPost(list, id) {
   const next = list.filter((item) => item.id !== id);
-  saveBlogPosts(next);
+  const { posts, synced } = await saveBlogPosts(next);
   notifyBlogUpdated();
-  return next;
+  return { posts, synced };
 }
 
-export function addBlogFolder(folders, { name, parentId = null } = {}) {
+export async function addBlogFolder(folders, { name, parentId = null } = {}) {
   const folderName = String(name || '').trim().slice(0, 40);
   if (!folderName) return normalizeFolders(folders);
   const now = Date.now();
@@ -284,14 +390,14 @@ export function addBlogFolder(folders, { name, parentId = null } = {}) {
   return saveBlogFolders(next);
 }
 
-export function renameBlogFolder(folders, id, name) {
+export async function renameBlogFolder(folders, id, name) {
   const folderName = String(name || '').trim().slice(0, 40);
   if (!folderName) return normalizeFolders(folders);
   const next = folders.map((f) => (f.id === id ? { ...f, name: folderName } : f));
   return saveBlogFolders(next);
 }
 
-export function removeBlogFolder(folders, posts, id) {
+export async function removeBlogFolder(folders, posts, id) {
   const removeIds = collectDescendantFolderIds(folders, id);
   const nextFolders = folders.filter((f) => !removeIds.has(f.id));
   const parent = getBlogFolder(folders, id)?.parentId || null;
@@ -302,22 +408,25 @@ export function removeBlogFolder(folders, posts, id) {
   }
   if (!fallback) {
     // 删光了就重建默认收藏夹
-    const restored = ensureDefaultFolder([]);
+    const restored = ensureDefaultFolder([], { persist: false });
     const defaultId = restored[0].id;
     const nextPosts = posts.map((p) => (
       p.folderId && removeIds.has(p.folderId) ? { ...p, folderId: defaultId } : p
     ));
-    saveBlogPosts(nextPosts);
+    try {
+      localStorage.setItem(FOLDERS_KEY, JSON.stringify(restored));
+    } catch (_) {}
+    const { posts: savedPosts } = await saveBlogPosts(nextPosts);
     notifyBlogUpdated();
-    return { folders: restored, posts: normalizePosts(nextPosts) };
+    return { folders: restored, posts: savedPosts };
   }
   const nextPosts = posts.map((p) => (
     p.folderId && removeIds.has(p.folderId) ? { ...p, folderId: fallback } : p
   ));
-  saveBlogFolders(nextFolders);
-  saveBlogPosts(nextPosts);
+  const foldersSaved = await saveBlogFolders(nextFolders);
+  const { posts: savedPosts } = await saveBlogPosts(nextPosts);
   notifyBlogUpdated();
-  return { folders: nextFolders, posts: normalizePosts(nextPosts) };
+  return { folders: foldersSaved, posts: savedPosts };
 }
 
 export function getBlogAuth() {

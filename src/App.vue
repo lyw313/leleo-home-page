@@ -1,9 +1,15 @@
 <template>
+  <!-- 开场动画挂在 v-app 外，避免被 overflow / transform 裁切 -->
+  <loader
+    v-if="isloading"
+    :avatar="configdata.avatar"
+    :title="configdata.username || configdata.welcometitle"
+    :subtitle="(personalizedtags && personalizedtags.slice(0, 2).join(' · ')) || '认真生活 · 热爱前端'"
+    @done="onIntroDone"
+  />
+
   <v-app class="vapp-fullscreen-background" style="overflow: hidden;" :class="{ 'radius-before': !xs }"
   :style="xs?{height: '100%',width: '100%',top: '0',left:'0'}:(sm?{height: '98%',width: '98%',top: '1%',left:' 1%'}:{height: '96.6%',width: '99%',top: '1.7%',left:' 0.5%'})">
-    <div class="loading" v-if="isloading">
-      <loader></loader>
-    </div>
 
     <video autoplay loop muted class="video-bg" id="bg-video" ref="VdPlayer"
     :style="xs?{height: '100%',width: '100%',top: '0',left:'0'}:(sm?{height: '98%',width: '98%',top: '1%',left:' 1%','border-radius': '16px'}:{height: '96.6%',width: '99%',top: '1.7%',left:' 0.5%','border-radius': '16px',})">
@@ -23,7 +29,7 @@
     
     <div v-show="!isClearScreen && page === 'home'" :style="xs||sm?{'overflow-y': 'auto','overflow-x': 'hidden'}:{}">
         <v-row>
-            <v-col cols="12" md="4" lg="3" class="leleo-left" align="center">
+            <v-col cols="12" md="4" lg="3" class="leleo-left">
               <div :style="xs||sm?{'font-size':'2.3rem'}:{'display':'none'}" class="leleo-left-welcome">
                 <span class="welcome-halo" aria-hidden="true"></span>
                 <span class="welcome-text">{{ configdata.welcometitle }}</span>
@@ -70,7 +76,6 @@
                   <button
                     type="button"
                     class="planner-entry building-solid"
-                    :style="{ maxWidth: (xs?270:300) + 'px' }"
                     @click="openPlanner"
                   >
                     <span class="planner-entry__icon" aria-hidden="true">
@@ -83,10 +88,26 @@
                     <v-icon icon="mdi-chevron-right" size="20" class="planner-entry__arrow"></v-icon>
                   </button>
 
+                  <!-- 手机端：博客入口与计划本并排，一屏放完 -->
+                  <button
+                    v-if="xs"
+                    type="button"
+                    class="planner-entry building-solid"
+                    @click="openBlogHome"
+                  >
+                    <span class="planner-entry__icon" aria-hidden="true">
+                      <v-icon icon="mdi-post-outline" size="22"></v-icon>
+                    </span>
+                    <span class="planner-entry__copy">
+                      <span class="planner-entry__main">学习博客</span>
+                      <span class="planner-entry__sub">查看学习记录与项目</span>
+                    </span>
+                    <v-icon icon="mdi-chevron-right" size="20" class="planner-entry__arrow"></v-icon>
+                  </button>
+
                 <div
-                  v-if="(personalizedtags && personalizedtags.length) || isAdmin"
+                  v-if="((personalizedtags && personalizedtags.length) || isAdmin) && !xs"
                   class="tags-panel building-solid"
-                  :style="{ maxWidth: (xs?270:300) + 'px' }"
                 >
                   <div class="tags-panel__title">自我介绍</div>
                   <div class="tags-panel__list">
@@ -99,16 +120,22 @@
                   </div>
                 </div>
 
-                <spinbuddy :music-playing="isPlaying" />
+                <spinbuddy v-if="!xs" :music-playing="isPlaying" />
 
-                <div class="leleo-left-chart building-solid">
+                <div v-if="!xs" class="leleo-left-chart building-solid">
                     <polarchart
                       :skills="profileSkills"
-                      :style="xs||sm?{'height':'250px','width':'100%','max-width':'300px'}:{'height':'310px','width':'100%','max-width':'300px'}"
+                      :style="xs||sm?{'height':'250px','width':'100%'}:{'height':'310px','width':'100%'}"
                     />
                 </div>
 
-                <v-container class="leleo-left-socialIconsContainer">
+                <reviews
+                  v-if="!xs"
+                  :background="configdata.pageBackgrounds?.reviews || '/img/reviews/portrait.png'"
+                  @open-reviews="openReviews"
+                />
+
+                <v-container v-if="!xs" class="leleo-left-socialIconsContainer">
                     <v-row align="center" justify="center">
                     <v-col class="pa-1" cols="auto" v-for="item in socialPlatformIcons">
                         <v-btn :size="xs?25:33" variant="tonal" color="var(--leleo-vcard-color)"
@@ -142,7 +169,7 @@
                 </v-container>
             </v-col>
 
-            <v-col cols="12" md="8" lg="9" style="height: 100vh;" :style="xs||sm ?{}:{'overflow': 'auto'}">
+            <v-col v-if="!xs" cols="12" md="8" lg="9" style="height: 100vh;" :style="xs||sm ?{}:{'overflow': 'auto'}">
                 <homeright :configdata=configdata :formattedTime=formattedTime 
                 :formattedDate=formattedDate :projectcards=projectcards
                 @open-blog-home="openBlogHome"
@@ -152,9 +179,20 @@
         </v-row>
     </div>
 
+    <mobilepage
+      v-if="!isClearScreen && (page === 'planner' || page === 'blog') && xs"
+      :page="page === 'blog' ? 'blog' : 'planner'"
+      @back="goHome"
+    />
     <plannerpage
-      v-if="!isClearScreen && page === 'planner'"
+      v-if="!isClearScreen && page === 'planner' && !xs"
       :background="configdata.pageBackgrounds?.planner || configdata.pageBackgrounds?.reviews"
+      @back="goHome"
+    />
+    <reviewspage
+      v-if="!isClearScreen && page === 'reviews'"
+      :is-admin="isAdmin"
+      :background="configdata.pageBackgrounds?.reviews || '/img/reviews/portrait.png'"
       @back="goHome"
     />
 
@@ -181,7 +219,7 @@
     />
 
     <blogpage
-      v-if="!isClearScreen && page === 'blog'"
+      v-if="!isClearScreen && page === 'blog' && !xs"
       :mode="blogMode"
       :post-id="blogPostId"
       :config="configdata"
@@ -201,7 +239,7 @@
     />
 
     <minimusic
-      v-if="!isClearScreen && !isloading && page === 'home'"
+      v-if="!isClearScreen && !isloading && page === 'home' && !xs"
       :title="currentSong?.title || '暂无歌曲'"
       :artist="currentSong?.author || '—'"
       :cover="currentSong?.pic || ''"
@@ -308,7 +346,7 @@
                 <v-tooltip location="top">
                   <template v-slot:activator="{ props }">
                     <v-btn v-bind="props" rounded="lg" class="ma-1 stack-btn" size="35">
-                      <v-avatar image="/img/stackicon/vite.svg" rounded="0" size="23"></v-avatar>
+                      <v-avatar :image="assetUrl('/img/stackicon/vite.svg')" rounded="0" size="23"></v-avatar>
                     </v-btn>
                   </template>
                   <span>vite</span>
@@ -324,7 +362,7 @@
                 <v-tooltip location="top">
                   <template v-slot:activator="{ props }">
                     <v-btn v-bind="props" rounded="lg" class="ma-1 stack-btn" size="35">
-                      <v-avatar image="/img/stackicon/mdi.svg" rounded="0" size="35"></v-avatar>
+                      <v-avatar :image="assetUrl('/img/stackicon/mdi.svg')" rounded="0" size="35"></v-avatar>
                     </v-btn>
                   </template>
                   <span>mdi</span>
@@ -332,7 +370,7 @@
                 <v-tooltip location="top">
                   <template v-slot:activator="{ props }">
                     <v-btn v-bind="props" rounded="lg" class="ma-1 stack-btn" size="35">
-                      <v-avatar image="/img/stackicon/chartjs.png" rounded="0" size="23"></v-avatar>
+                      <v-avatar :image="assetUrl('/img/stackicon/chartjs.png')" rounded="0" size="23"></v-avatar>
                     </v-btn>
                   </template>
                   <span>chartjs</span>
@@ -340,7 +378,7 @@
                 <v-tooltip location="top">
                   <template v-slot:activator="{ props }">
                     <v-btn v-bind="props" rounded="lg" class="ma-1 stack-btn" size="35" color="#0F1225">
-                      <v-avatar image="/img/stackicon/meting.png" rounded="0" size="23"></v-avatar>
+                      <v-avatar :image="assetUrl('/img/stackicon/meting.png')" rounded="0" size="23"></v-avatar>
                     </v-btn>
                   </template>
                   <span>meting</span>
@@ -348,7 +386,7 @@
                 <v-tooltip location="top">
                   <template v-slot:activator="{ props }">
                     <v-btn v-bind="props" rounded="lg" class="ma-1 stack-btn" size="35" color="#070707">
-                      <v-avatar image="/img/stackicon/uiverse.png" rounded="0" size="23"></v-avatar>
+                      <v-avatar :image="assetUrl('/img/stackicon/uiverse.png')" rounded="0" size="23"></v-avatar>
                     </v-btn>
                   </template>
                   <span>uiverse</span>
@@ -375,7 +413,7 @@
 
   .tags-panel {
     width: 100%;
-    max-width: 300px;
+    max-width: none;
     min-height: 170px;
     padding: 1.35rem 1.05rem 1.4rem;
     box-sizing: border-box;
@@ -392,7 +430,7 @@
 
   .planner-entry {
     width: 100%;
-    max-width: 300px;
+    max-width: none;
     display: flex;
     align-items: center;
     gap: 0.65rem;

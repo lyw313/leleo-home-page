@@ -49,7 +49,9 @@ export function loadProfile(seed = {}) {
         ? normalizeTags(parsed.tags)
         : fallback.tags,
       skills: Object.prototype.hasOwnProperty.call(parsed, 'skills')
-        ? normalizeSkills(parsed.skills)
+        ? (normalizeSkills(parsed.skills).length
+          ? normalizeSkills(parsed.skills)
+          : fallback.skills)
         : fallback.skills,
     };
   } catch (_) {

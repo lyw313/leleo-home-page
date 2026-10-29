@@ -1,3 +1,5 @@
+import { assetUrl } from './assetUrl.js';
+
 const LIST_KEY = 'leleo-music-playlist-v1';
 const DB_NAME = 'leleo-music-db';
 const DB_STORE = 'blobs';
@@ -126,7 +128,10 @@ export async function hydrateMusicUrls(list = []) {
       if (blob) {
         item.url = URL.createObjectURL(blob);
       }
+    } else if (item.url) {
+      item.url = assetUrl(item.url);
     }
+    if (item.pic) item.pic = assetUrl(item.pic);
     if (item.url) out.push(item);
   }
   return out;

@@ -28,6 +28,9 @@
           </button>
         </template>
       </div>
+      <div v-if="isAdmin && localOnlyWarn" class="auth-local-warn" title="删除评价与跨设备同步需要服务器登录">
+        仅本机登录，无法同步/删除评价
+      </div>
     </div>
 
     <div v-if="showLogin && !isAdmin" class="auth-modal">
@@ -84,15 +87,15 @@
 <script>
 import {
   getSiteAuth,
-  setSiteAuth,
-  clearSiteAuth,
-  verifySitePassword,
+  loginSite,
+  logoutSite,
   authTtlFromConfig,
   extendSiteAuth,
   canRenewAuth,
   renewCooldownLeft,
   DEFAULT_TTL_MS,
 } from '../utils/authStore.js';
+import { syncLocalToServer } from '../utils/serverSync.js';
 import {
   downloadSiteBackup,
   readBackupFromFile,
@@ -120,6 +123,7 @@ export default {
       backupMsg: '',
       backupError: false,
       importMode: 'replace',
+      localOnlyWarn: false,
     };
   },
   computed: {
@@ -175,22 +179,34 @@ export default {
       const auth = getSiteAuth();
       this.isAdmin = !!auth.ok;
       this.expiresAt = auth.expiresAt || 0;
+      this.localOnlyWarn = !!(auth.ok && auth.source === 'local');
       this.$emit('change', this.isAdmin);
       if (!this.isAdmin) this.showBackup = false;
     },
-    login() {
+    async login() {
       this.error = '';
-      if (!verifySitePassword(this.password, this.expectedPassword)) {
-        this.error = '密码不对';
+      const result = await loginSite(this.password, this.expectedPassword, this.ttlMs);
+      if (!result.ok) {
+        this.error = result.error || '密码不对';
         return;
       }
-      const auth = setSiteAuth(this.ttlMs);
       this.isAdmin = true;
-      this.expiresAt = auth.expiresAt;
+      this.expiresAt = result.expiresAt;
       this.password = '';
       this.showLogin = false;
       this.tick = Date.now();
       this.$emit('change', true);
+      // 登录后立刻把本地数据写入 PostgreSQL
+      if (result.source === 'server') {
+        this.localOnlyWarn = false;
+        try {
+          await syncLocalToServer();
+        } catch (e) {
+          console.warn('[auth] sync after login failed', e);
+        }
+      } else {
+        this.localOnlyWarn = true;
+      }
     },
     renew() {
       if (!this.isAdmin || !this.canRenew) return;
@@ -199,10 +215,11 @@ export default {
       this.expiresAt = auth.expiresAt;
       this.tick = Date.now();
     },
-    logout() {
-      clearSiteAuth();
+    async logout() {
+      await logoutSite();
       this.isAdmin = false;
       this.expiresAt = 0;
+      this.localOnlyWarn = false;
       this.showBackup = false;
       this.$emit('change', false);
     },
@@ -266,8 +283,20 @@ export default {
   right: 0.85rem;
   z-index: 60;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.45rem;
+  max-width: min(92vw, 420px);
+}
+.auth-local-warn {
+  flex-basis: 100%;
+  text-align: right;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #ffb4a0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  line-height: 1.3;
 }
 .auth-renew {
   display: inline-flex;

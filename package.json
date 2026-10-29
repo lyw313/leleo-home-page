@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "dev:server": "npm --prefix server run dev",
+    "dev:all": "npm run dev:server & npm run dev",
     "build": "vite build",
     "preview": "vite preview",
+    "server": "npm --prefix server start",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

@@ -66,6 +66,8 @@
         <span v-else class="blog-page__tip">与全站管理员同一密码，约 2 小时有效</span>
       </div>
 
+      <div v-if="syncHint" class="blog-page__sync-warn">{{ syncHint }}</div>
+
       <div v-if="unlocked && mode === 'list'" class="blog-page__session">
         管理中 · {{ remainText }}
       </div>
@@ -300,6 +302,7 @@
 
           <label class="blog-page__label">正文</label>
           <blog-editor
+            ref="editor"
             v-model="draft.content"
           />
 
@@ -336,15 +339,17 @@ import {
   notifyBlogUpdated,
   ensurePostsHaveFolders,
   resolveValidFolderId,
+  hydrateBlogFromServer,
 } from '../utils/blogStore.js';
 import {
   getSiteAuth,
-  setSiteAuth,
-  clearSiteAuth,
-  verifySitePassword,
+  loginSite,
+  logoutSite,
   authTtlFromConfig,
 } from '../utils/authStore.js';
+import { syncLocalToServer } from '../utils/serverSync.js';
 import { renderBlogHtml, stripHtml, openBlogAttachment } from '../utils/blogHtml.js';
+import { assetUrl } from '../utils/assetUrl.js';
 import BlogEditor from './blogeditor.vue';
 
 function emptyDraft() {
@@ -384,6 +389,7 @@ export default {
       loginError: '',
       filter: 'all',
       keyword: '',
+      syncHint: '',
       draft: emptyDraft(),
       tick: Date.now(),
       timer: null,
@@ -397,7 +403,8 @@ export default {
       return this.config.siteAdmin || this.config.blogAdmin || {};
     },
     pageBg() {
-      return this.config.pageBackgrounds?.blog || '/img/wallpaper/static/书房夜晚/image.png';
+      const raw = this.config.pageBackgrounds?.blog || '/img/wallpaper/static/书房夜晚/image.png';
+      return assetUrl(raw);
     },
     scrimStyle() {
       return {
@@ -512,29 +519,44 @@ export default {
     },
   },
   mounted() {
-    this.reload();
+    this.reloadFromCache();
+    this.hydrateFromServer();
     this.refreshAuth();
     this.timer = setInterval(() => {
       this.tick = Date.now();
       this.refreshAuth();
     }, 15000);
     window.addEventListener('leleo-auth-changed', this.refreshAuth);
-    window.addEventListener('leleo-blog-updated', this.reload);
+    window.addEventListener('leleo-blog-updated', this.reloadFromCache);
   },
   beforeUnmount() {
     if (this.timer) clearInterval(this.timer);
     window.removeEventListener('leleo-auth-changed', this.refreshAuth);
-    window.removeEventListener('leleo-blog-updated', this.reload);
+    window.removeEventListener('leleo-blog-updated', this.reloadFromCache);
   },
   methods: {
     formatTime: formatBlogTime,
     excerpt,
-    reload() {
+    reloadFromCache() {
       const posts = loadBlogPosts((this.config.blogAdmin || {}).seedPosts || []);
       const folders = loadBlogFolders();
       const ensured = ensurePostsHaveFolders(posts, folders);
       this.posts = ensured.posts;
       this.folders = ensured.folders;
+    },
+    async hydrateFromServer() {
+      try {
+        const state = await hydrateBlogFromServer((this.config.blogAdmin || {}).seedPosts || []);
+        if (!state) return;
+        this.posts = state.posts || [];
+        this.folders = state.folders || [];
+      } catch (e) {
+        console.warn('[blog] hydrate failed', e);
+      }
+    },
+    reload() {
+      this.reloadFromCache();
+      this.hydrateFromServer();
     },
     openFolder(id) {
       this.currentFolderId = id || null;
@@ -555,10 +577,10 @@ export default {
       this.newFolderName = '';
       this.showNewFolderInput = true;
     },
-    confirmNewFolder() {
+    async confirmNewFolder() {
       const name = this.newFolderName.trim();
       if (!name) return;
-      this.folders = addBlogFolder(this.folders, { name, parentId: this.currentFolderId });
+      this.folders = await addBlogFolder(this.folders, { name, parentId: this.currentFolderId });
       this.showNewFolderInput = false;
       this.newFolderName = '';
       this.folderHint = '';
@@ -568,18 +590,18 @@ export default {
       this.newFolderName = '';
       this.folderHint = '';
     },
-    promptRenameFolder(folder) {
+    async promptRenameFolder(folder) {
       const name = prompt('重命名收藏夹', folder.name);
       if (name == null) return;
       const trimmed = name.trim();
       if (!trimmed || trimmed === folder.name) return;
-      this.folders = renameBlogFolder(this.folders, folder.id, trimmed);
+      this.folders = await renameBlogFolder(this.folders, folder.id, trimmed);
     },
-    deleteFolder(id) {
+    async deleteFolder(id) {
       if (!confirm('删除该收藏夹？子收藏夹会一并删除，其中的记录会移到上级或其他收藏夹。')) return;
       const folder = this.folders.find((f) => f.id === id);
       const parentId = folder?.parentId || null;
-      const result = removeBlogFolder(this.folders, this.posts, id);
+      const result = await removeBlogFolder(this.folders, this.posts, id);
       this.folders = result.folders;
       this.posts = result.posts;
       if (this.currentFolderId === id || (this.currentFolderId && !this.folders.some((f) => f.id === this.currentFolderId))) {
@@ -612,21 +634,29 @@ export default {
         };
       }
     },
-    login() {
+    async login() {
       this.loginError = '';
-      if (!verifySitePassword(this.password, this.expectedPassword)) {
-        this.loginError = '密码不对';
+      this.syncHint = '';
+      const result = await loginSite(this.password, this.expectedPassword, this.ttlMs);
+      if (!result.ok) {
+        this.loginError = result.error || '密码不对';
         return;
       }
-      const auth = setSiteAuth(this.ttlMs);
       this.unlocked = true;
-      this.expiresAt = auth.expiresAt;
+      this.expiresAt = result.expiresAt;
       this.password = '';
       this.showLogin = false;
       this.tick = Date.now();
+      if (result.source === 'server') {
+        try {
+          await syncLocalToServer();
+        } catch (_) {}
+      } else {
+        this.syncHint = '当前为本地登录（未连上后端会话）。本机可编辑，但手机/其他浏览器看不到新文章。请确认后端已启动并用左下角重新登录。';
+      }
     },
-    logout() {
-      clearSiteAuth();
+    async logout() {
+      await logoutSite();
       this.unlocked = false;
       this.expiresAt = 0;
       this.showLogin = false;
@@ -673,7 +703,7 @@ export default {
     onDragLeaveFolder(folderId) {
       if (this.dropTargetId === folderId) this.dropTargetId = '';
     },
-    onDropToFolder(folderId) {
+    async onDropToFolder(folderId) {
       const postId = this.draggingPostId;
       this.dropTargetId = '';
       this.draggingPostId = '';
@@ -681,7 +711,7 @@ export default {
       const post = getBlogPost(this.posts, postId);
       if (!post) return;
       if ((post.folderId || null) === folderId) return;
-      this.posts = updateBlogPost(this.posts, postId, {
+      const { posts, synced } = await updateBlogPost(this.posts, postId, {
         kind: post.kind,
         title: post.title,
         summary: post.summary,
@@ -690,6 +720,10 @@ export default {
         content: post.content,
         folderId,
       });
+      this.posts = posts;
+      if (!synced) {
+        this.syncHint = '已改本机，但未能同步到服务器。请先在左下角完成管理员登录。';
+      }
     },
     goRead(id) { this.$emit('go-read', id); },
     goWrite() {
@@ -713,7 +747,7 @@ export default {
       }
       this.$emit('go-edit', id);
     },
-    saveDraft() {
+    async saveDraft() {
       this.refreshAuth();
       if (!this.unlocked) {
         this.loginError = '会话已过期，请重新输入密码';
@@ -724,6 +758,9 @@ export default {
         alert('请选择所属收藏夹');
         return;
       }
+      // 保存前从编辑器强制 flush，避免 v-model 落后于 DOM
+      const flushed = this.$refs.editor?.flush?.();
+      if (typeof flushed === 'string') this.draft.content = flushed;
       if (!this.canSave) return;
       const payload = {
         kind: this.draft.kind,
@@ -734,14 +771,27 @@ export default {
         content: this.draft.content,
         folderId: this.draft.folderId,
       };
+      let result;
       if (this.mode === 'edit' && this.postId) {
-        this.posts = updateBlogPost(this.posts, this.postId, payload);
+        result = await updateBlogPost(this.posts, this.postId, payload);
+        this.posts = result.posts;
         notifyBlogUpdated();
+        if (!result.synced) {
+          this.syncHint = '已保存在本机，但未同步到服务器。手机/其他浏览器看不到。请先用左下角管理员登录后再保存。';
+          return;
+        }
+        this.syncHint = '';
         this.$emit('published', this.postId);
         return;
       }
-      this.posts = addBlogPost(this.posts, payload);
+      result = await addBlogPost(this.posts, payload);
+      this.posts = result.posts;
       notifyBlogUpdated();
+      if (!result.synced) {
+        this.syncHint = '已保存在本机，但未同步到服务器。手机/其他浏览器看不到。请先用左下角管理员登录后再保存。';
+        return;
+      }
+      this.syncHint = '';
       this.$emit('published', this.posts[0]?.id || '');
     },
     onBodyClick(e) {
@@ -754,15 +804,21 @@ export default {
         mime: fileLink.getAttribute('data-file-mime') || '',
       });
     },
-    removePost(id) {
+    async removePost(id) {
       this.refreshAuth();
       if (!this.unlocked) {
         this.showLogin = true;
         return;
       }
       if (!confirm('确定删除这条学习记录？')) return;
-      this.posts = removeBlogPost(this.posts, id);
+      const { posts, synced } = await removeBlogPost(this.posts, id);
+      this.posts = posts;
       notifyBlogUpdated();
+      if (!synced) {
+        this.syncHint = '本机已删除，但服务器未同步。请先登录管理员后再删一次。';
+      } else {
+        this.syncHint = '';
+      }
     },
     removeCurrent() {
       if (!this.post) return;
@@ -897,6 +953,16 @@ export default {
 .blog-page__session { opacity: 0.7; margin-bottom: 0.8rem; }
 .blog-page__tip { opacity: 0.65; }
 .blog-page__error { color: #ffb4b4; }
+.blog-page__sync-warn {
+  margin: 0.55rem 0 0.35rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(180, 60, 40, 0.28);
+  border: 1px solid rgba(255, 160, 120, 0.35);
+  color: #ffd0c0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
 .blog-page__breadcrumb {
   display: flex;
   flex-wrap: wrap;

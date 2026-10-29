@@ -69,6 +69,7 @@
 <script>
 import {
   sanitizeHtml,
+  softSanitizeHtml,
   textToHtml,
   stripHtml,
   isHtmlContent,
@@ -395,10 +396,25 @@ export default {
       if (!el) return;
       this.syncing = true;
       ensureEditorSpacers(el);
-      const html = sanitizeHtml(el.innerHTML);
+      // 输入过程只用轻量清洗，避免完整 sanitize 重排/删段导致丢内容
+      const html = softSanitizeHtml(el.innerHTML);
       const empty = !stripHtml(html) && !/<img|<table|data-blog-file|blog-file/i.test(html);
       this.$emit('update:modelValue', empty ? '' : html);
       this.$nextTick(() => { this.syncing = false; });
+    },
+    /** 正式保存前调用：完整 sanitize，并立刻回写 v-model */
+    flush() {
+      const el = this.$refs.surface;
+      if (!el) return this.modelValue || '';
+      this.syncing = true;
+      ensureEditorSpacers(el);
+      const html = sanitizeHtml(el.innerHTML);
+      const empty = !stripHtml(html) && !/<img|<table|data-blog-file|blog-file/i.test(html);
+      const next = empty ? '' : html;
+      if (el.innerHTML !== next) el.innerHTML = next || '';
+      this.$emit('update:modelValue', next);
+      this.$nextTick(() => { this.syncing = false; });
+      return next;
     },
     pickFile() {
       this.$refs.fileInput?.click();

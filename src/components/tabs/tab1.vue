@@ -83,6 +83,7 @@
 <script>
 import { setCookie, getCookie, eraseCookie } from '../../utils/cookieUtils.js';
 import config from '../../config.js';
+import { withAssetBase } from '../../utils/assetUrl.js';
 import { useDisplay } from 'vuetify';
 export default {
   emits: ['cancel'],
@@ -110,7 +111,7 @@ export default {
   },
   mounted() {
     if(import.meta.env.VITE_CONFIG){
-        this.configdata = JSON.parse(import.meta.env.VITE_CONFIG);
+        this.configdata = withAssetBase(JSON.parse(import.meta.env.VITE_CONFIG));
     }
     
     let leleodata = this.getCookie("leleodata");

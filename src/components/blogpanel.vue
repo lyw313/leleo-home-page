@@ -38,7 +38,7 @@
 </template>
 
 <script>
-import { loadBlogPosts, excerpt } from '../utils/blogStore.js';
+import { loadBlogPosts, excerpt, hydrateBlogFromServer } from '../utils/blogStore.js';
 
 export default {
   name: 'BlogPanel',
@@ -55,18 +55,29 @@ export default {
     },
   },
   mounted() {
-    this.reload();
-    window.addEventListener('storage', this.reload);
-    window.addEventListener('leleo-blog-updated', this.reload);
+    this.reloadFromCache();
+    this.hydrateFromServer();
+    window.addEventListener('storage', this.reloadFromCache);
+    window.addEventListener('leleo-blog-updated', this.reloadFromCache);
   },
   beforeUnmount() {
-    window.removeEventListener('storage', this.reload);
-    window.removeEventListener('leleo-blog-updated', this.reload);
+    window.removeEventListener('storage', this.reloadFromCache);
+    window.removeEventListener('leleo-blog-updated', this.reloadFromCache);
   },
   methods: {
     excerpt,
-    reload() {
+    reloadFromCache() {
       this.posts = loadBlogPosts(this.config.blogAdmin?.seedPosts || []);
+    },
+    async hydrateFromServer() {
+      try {
+        const state = await hydrateBlogFromServer(this.config.blogAdmin?.seedPosts || []);
+        if (state?.posts) this.posts = state.posts;
+      } catch (_) {}
+    },
+    reload() {
+      this.reloadFromCache();
+      this.hydrateFromServer();
     },
   },
 };
@@ -74,8 +85,9 @@ export default {
 
 <style scoped>
 .blog-panel {
-  width: min(100%, 400px);
-  margin: 0.45rem 0.75rem 0.55rem;
+  width: 100%;
+  max-width: none;
+  margin: 0.45rem 0 0.55rem;
   padding: 1rem 1rem 0.9rem;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.12);

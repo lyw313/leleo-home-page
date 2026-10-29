@@ -351,27 +351,54 @@ export function sanitizeHtml(html = '') {
   const template = document.createElement('template');
   template.innerHTML = raw;
 
-  // 若外层是「表格」卡片（含复制/下载按钮），尽量抽出 table
+  // 若外层是「表格」卡片（含复制/下载按钮），抽出 table，并保持原文档顺序
   const allTables = template.content.querySelectorAll('table');
   let sourceRoot = template.content;
   if (allTables.length === 1) {
     const text = (template.content.textContent || '').replace(/\s+/g, '');
     if (text.startsWith('表格') || template.content.querySelector('button, svg')) {
+      const table = allTables[0];
       const frag = document.createDocumentFragment();
-      frag.appendChild(allTables[0].cloneNode(true));
-      Array.from(template.content.childNodes).forEach((n) => {
-        if (n.nodeType === Node.ELEMENT_NODE && n.tagName === 'TABLE') return;
-        if (n.contains && n.contains(allTables[0])) return;
-        const t = (n.textContent || '').trim();
-        if (!t || t === '表格' || t === '删除') return;
-        if (n.nodeType === Node.TEXT_NODE) {
+      let tableAppended = false;
+
+      const appendTableOnce = () => {
+        if (tableAppended) return;
+        frag.appendChild(table.cloneNode(true));
+        tableAppended = true;
+      };
+
+      const isUiChrome = (el) => {
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+        if (el.matches?.('button, svg, script, style')) return true;
+        if (el.querySelector?.('button, svg')) return true;
+        const t = (el.textContent || '').replace(/\s+/g, '');
+        return t === '表格' || t === '删除' || t === '复制' || t === '下载';
+      };
+
+      const walk = (node) => {
+        if (node === table || (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'TABLE')) {
+          appendTableOnce();
+          return;
+        }
+        if (node.nodeType === Node.TEXT_NODE) {
+          const t = (node.textContent || '').trim();
+          if (!t || t === '表格' || t === '删除') return;
           const p = document.createElement('p');
           p.textContent = t;
-          frag.insertBefore(p, frag.firstChild);
-        } else if (n.nodeType === Node.ELEMENT_NODE && !n.querySelector?.('table')) {
-          frag.insertBefore(n.cloneNode(true), frag.firstChild);
+          frag.appendChild(p);
+          return;
         }
-      });
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        if (isUiChrome(node) && !node.contains(table)) return;
+        if (node.contains(table)) {
+          Array.from(node.childNodes).forEach(walk);
+          return;
+        }
+        frag.appendChild(node.cloneNode(true));
+      };
+
+      Array.from(template.content.childNodes).forEach(walk);
+      appendTableOnce();
       sourceRoot = frag;
     }
   }
@@ -395,7 +422,6 @@ export function sanitizeHtml(html = '') {
       if (prev && (prev.classList.contains('blog-table-wrap') || prev.classList.contains('blog-file'))) {
         return;
       }
-      // 连续多个空段只留一个（跟在块后时）
       if (prev && isSpacerParagraph(prev)) {
         el.remove();
       }
@@ -407,6 +433,23 @@ export function sanitizeHtml(html = '') {
 
   ensureEditorSpacers(out);
   return out.innerHTML.trim();
+}
+
+/**
+ * 编辑过程中的轻量同步：只清危险标签/属性，不做会丢内容的结构重排。
+ * 完整 sanitize 留给粘贴与正式保存（flush）。
+ */
+export function softSanitizeHtml(html = '') {
+  const raw = String(html || '');
+  if (!raw || typeof document === 'undefined') return raw;
+  const template = document.createElement('template');
+  template.innerHTML = raw;
+  const out = document.createElement('div');
+  Array.from(template.content.childNodes).forEach((child) => {
+    const cleaned = cleanNode(child);
+    if (cleaned) out.appendChild(cleaned);
+  });
+  return out.innerHTML;
 }
 
 /** 纯文本 / Markdown 轻量转 HTML（上传 .md/.txt 用） */

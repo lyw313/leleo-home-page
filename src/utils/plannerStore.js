@@ -1,8 +1,38 @@
+import { pullFromServer, pushToServer } from './serverSync.js';
+
 const STORAGE_KEY = 'leleo-planner-v1';
 
 const DEFAULT_TOPICS = [];
 
 const TOPIC_COLORS = ['#5ec8ff', '#ffd56a', '#9ae6b4', '#f6ad55', '#d6bcfa', '#fc8181', '#76e4f7', '#fbb6ce'];
+
+/** 推进序列任务（现在/接下来/稍后） */
+export const TASK_BUCKETS = ['now', 'next', 'later'];
+
+export function normalizeTask(raw = {}, index = 0) {
+  const title = String(raw.title || '').trim().slice(0, 80);
+  if (!title) return null;
+  const bucket = TASK_BUCKETS.includes(raw.bucket) ? raw.bucket : 'next';
+  const done = !!raw.done;
+  return {
+    id: String(raw.id || `task-${Date.now()}-${index}`).slice(0, 40),
+    title,
+    note: String(raw.note || '').trim().slice(0, 300),
+    topicId: raw.topicId ? String(raw.topicId) : '',
+    date: /^\d{4}-\d{2}-\d{2}$/.test(raw.date) ? raw.date : toDateKey(),
+    bucket,
+    order: Number.isFinite(raw.order) ? raw.order : index,
+    done,
+    updatedAt: Number(raw.updatedAt) || Date.now(),
+  };
+}
+
+function normalizeTasks(list = []) {
+  return (Array.isArray(list) ? list : [])
+    .map((t, i) => normalizeTask(t, i))
+    .filter(Boolean)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -80,8 +110,10 @@ function isEmptyEntry(entry) {
 /** 兼容旧版纯日期 map */
 export function normalizePlannerState(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return { topics: DEFAULT_TOPICS.map((t, i) => ({ ...t })), days: {} };
+    return { topics: DEFAULT_TOPICS.map((t, i) => ({ ...t })), days: {}, tasks: [] };
   }
+
+  const tasks = normalizeTasks(input.tasks);
 
   // 新格式 { topics, days }
   if (input.days || input.topics) {
@@ -93,7 +125,7 @@ export function normalizePlannerState(input = {}) {
       const entry = normalizeEntry(key, value || {});
       if (!isEmptyEntry(entry)) days[key] = entry;
     });
-    return { topics, days };
+    return { topics, days, tasks };
   }
 
   // 旧格式：日期 key 直接挂在根上
@@ -103,14 +135,64 @@ export function normalizePlannerState(input = {}) {
     const entry = normalizeEntry(key, value || {});
     if (!isEmptyEntry(entry)) days[key] = entry;
   });
-  return { topics: [], days };
+  return { topics: [], days, tasks };
 }
 
 export function loadPlanner() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return normalizePlannerState({});
-    return normalizePlannerState(JSON.parse(raw));
+    const local = raw ? normalizePlannerState(JSON.parse(raw)) : normalizePlannerState({});
+    hydratePlannerFromServer().catch(() => {});
+    return local;
+  } catch (_) {
+    return normalizePlannerState({});
+  }
+}
+
+/** 从服务器拉取计划本；本地为空时以服务器为准（换手机/浏览器可恢复） */
+export async function hydratePlannerFromServer() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const local = raw ? normalizePlannerState(JSON.parse(raw)) : normalizePlannerState({});
+    return await pullFromServer('planner', local, (a, b) => {
+      const remote = normalizePlannerState(b);
+      const localEmpty = !(a.topics || []).length && !Object.keys(a.days || {}).length;
+      const remoteHas = (remote.topics || []).length || Object.keys(remote.days || {}).length;
+
+      let merged;
+      if (remoteHas && localEmpty) {
+        merged = remote;
+      } else {
+        merged = mergePlannerStates(a, remote);
+        const taskMap = new Map();
+        [...(a.tasks || []), ...(remote.tasks || [])].forEach((t) => {
+          const old = taskMap.get(t.id);
+          if (!old || (t.updatedAt || 0) >= (old.updatedAt || 0)) taskMap.set(t.id, t);
+        });
+        merged.tasks = normalizeTasks([...taskMap.values()]);
+      }
+
+      if (JSON.stringify(merged) === JSON.stringify(a)) {
+        if (!remoteHas && ((a.topics || []).length || Object.keys(a.days || {}).length)) {
+          pushToServer('planner', a);
+        }
+        return a;
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      } catch (_) {}
+      window.dispatchEvent(new Event('leleo-planner-updated'));
+      return merged;
+    });
+  } catch (_) {
+    return loadPlannerLocalOnly();
+  }
+}
+
+function loadPlannerLocalOnly() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? normalizePlannerState(JSON.parse(raw)) : normalizePlannerState({});
   } catch (_) {
     return normalizePlannerState({});
   }
@@ -121,8 +203,42 @@ export function savePlanner(state) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch (_) {}
+  pushToServer('planner', next);
   window.dispatchEvent(new Event('leleo-planner-updated'));
   return next;
+}
+
+/* ---------- 推进序列任务（现在 / 接下来 / 稍后） ---------- */
+
+export function addTask(state, { title, note = '', topicId = '', date = '', bucket = 'next' }) {
+  const tasks = state?.tasks || [];
+  const task = normalizeTask({
+    title,
+    note,
+    topicId,
+    date: date || toDateKey(),
+    bucket,
+    order: tasks.length,
+    updatedAt: Date.now(),
+  }, tasks.length);
+  if (!task) return state;
+  return savePlanner({ ...state, tasks: [...tasks, task] });
+}
+
+export function updateTask(state, id, payload = {}) {
+  const tasks = (state?.tasks || []).map((t) => (
+    t.id === id ? normalizeTask({ ...t, ...payload, updatedAt: Date.now() }, t.order) : t
+  ));
+  return savePlanner({ ...state, tasks });
+}
+
+export function removeTask(state, id) {
+  return savePlanner({ ...state, tasks: (state?.tasks || []).filter((t) => t.id !== id) });
+}
+
+export function moveTaskBucket(state, id, bucket) {
+  if (!TASK_BUCKETS.includes(bucket)) return state;
+  return updateTask(state, id, { bucket });
 }
 
 export function getPlannerEntry(state, dateKey) {
@@ -270,7 +386,7 @@ export function mergePlannerStates(base = {}, incoming = {}) {
       days[key] = entry;
     }
   });
-  return { topics: [...topicMap.values()].slice(0, 30), days };
+  return { topics: [...topicMap.values()].slice(0, 30), days, tasks: a.tasks || [] };
 }
 
 export { STORAGE_KEY as PLANNER_STORAGE_KEY, DEFAULT_TOPICS, TOPIC_COLORS };

@@ -173,6 +173,7 @@
 <script>
 import { saveMusicBlob } from '../utils/musicStore.js';
 import { formatTime } from '../utils/lyricsUtils.js';
+import { assetUrl } from '../utils/assetUrl.js';
 
 function emptyDraft() {
   return { title: '', author: '', url: '', file: null, fileName: '' };
@@ -184,7 +185,7 @@ export default {
     title: { type: String, default: '暂无歌曲' },
     artist: { type: String, default: '—' },
     cover: { type: String, default: '' },
-    background: { type: String, default: '/img/world/life/moon-town.png' },
+    background: { type: String, default: () => assetUrl('/img/world/life/moon-town.png') },
     isPlaying: { type: Boolean, default: false },
     loading: { type: Boolean, default: false },
     songs: { type: Array, default: () => [] },
@@ -346,7 +347,10 @@ export default {
   left: auto;
   bottom: 1rem;
   z-index: 45;
-  width: min(400px, calc(100vw - 2rem));
+  /* 与右侧栏陀螺/博客同宽撑满 */
+  width: min(var(--leleo-widget-width, 100%), calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -678,7 +682,7 @@ export default {
     left: auto;
     bottom: 0.55rem;
   }
-  .mini-player { width: min(380px, calc(100vw - 1.1rem)); }
+  .mini-player { width: min(var(--leleo-widget-width, 100%), calc(100vw - 1.1rem)); }
   .mini-player__panel { height: min(32vh, 280px); }
 }
 </style>

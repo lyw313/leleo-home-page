@@ -155,6 +155,7 @@
 import { useDisplay } from 'vuetify';
 import { setCookie, getCookie, eraseCookie } from '../../utils/cookieUtils.js';
 import config from '../../config.js';
+import { withAssetBase } from '../../utils/assetUrl.js';
 export default {
     emits: ['cancel'],
     setup() {
@@ -197,7 +198,7 @@ export default {
     },
     mounted() {
         if(import.meta.env.VITE_CONFIG){
-            this.configdata = JSON.parse(import.meta.env.VITE_CONFIG);
+            this.configdata = withAssetBase(JSON.parse(import.meta.env.VITE_CONFIG));
         }
         this.wallpaperPIC = this.configdata.wallpaper.pic;
         this.wallpaperVD = this.configdata.wallpaper.video;

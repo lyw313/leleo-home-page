@@ -1,12 +1,17 @@
 const STORAGE_KEY = 'leleo-world-modules-v1';
 
 function normalizeItem(item, index = 0) {
+  const repo = String(item.repo || item.link || '').trim();
+  const website = String(item.website || '').trim();
   return {
     id: item.id || `w-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
     title: String(item.title || '未命名').trim().slice(0, 80),
     text: String(item.text || '').trim().slice(0, 300),
     image: String(item.image || '').trim(),
-    link: String(item.link || '').trim(),
+    website,
+    repo,
+    // 兼容旧字段：link 视为仓库地址
+    link: repo,
   };
 }
 

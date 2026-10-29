@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: leleo-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: leleo
+      POSTGRES_PASSWORD: leleo
+      POSTGRES_DB: leleo
+    volumes:
+      - leleo_pg_data:/var/lib/postgresql/data
+
+volumes:
+  leleo_pg_data:

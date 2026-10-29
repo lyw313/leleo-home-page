@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique @default("admin")
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model BlogFolder {
+  id        String       @id
+  name      String
+  parentId  String?
+  createdAt DateTime     @default(now())
+  parent    BlogFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  BlogFolder[] @relation("FolderTree")
+  posts     BlogPost[]
+
+  @@index([parentId])
+}
+
+model BlogPost {
+  id         String      @id
+  title      String
+  summary    String      @default("")
+  content    String
+  tags       Json        @default("[]")
+  projectUrl String      @default("")
+  kind       String      @default("note")
+  folderId   String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  folder     BlogFolder  @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
+  @@index([folderId])
+  @@index([updatedAt])
+}
+
+model PlannerTopic {
+  id        String   @id
+  name      String
+  color     String   @default("#5ec8ff")
+  startDate String   @default("")
+  endDate   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlannerDay {
+  id        String   @id @default(cuid())
+  dateKey   String   @unique
+  topicIds  Json     @default("[]")
+  plan      String   @default("")
+  diary     String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
+model WorldModule {
+  id        String   @id
+  moduleKey String
+  title     String
+  content   String   @default("")
+  media     Json     @default("{}")
+  sortOrder Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@index([moduleKey])
+}
+
+model ProfileState {
+  id        String   @id @default("default")
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model Upload {
+  id           String   @id @default(cuid())
+  originalName String
+  mime         String
+  size         Int
+  path         String
+  createdAt    DateTime @default(now())
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  name      String
+  content   String
+  rating    Int      @default(5)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

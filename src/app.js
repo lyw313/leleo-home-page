@@ -11,13 +11,17 @@ import spinbuddy from './components/spinbuddy.vue';
 import pageclimber from './components/pageclimber.vue';
 import worldpage from './components/worldpage.vue';
 import blogpage from './components/blogpage.vue';
+import mobilepage from './components/mobilepage.vue';
 import minimusic from './components/minimusic.vue';
 import authchip from './components/authchip.vue';
 import profileeditor from './components/profileeditor.vue';
+import reviews from './components/reviews.vue';
+import reviewspage from './components/reviewspage.vue';
 import config from './config.js';
+import { assetUrl, withAssetBase } from './utils/assetUrl.js';
 import { getCookie, eraseCookie } from './utils/cookieUtils.js';
 import { setMeta,getFormattedTime,getFormattedDate,dataConsole } from './utils/common.js';
-import { getSiteAuth } from './utils/authStore.js';
+import { getSiteAuth, refreshServerAuth } from './utils/authStore.js';
 import { loadProfile } from './utils/profileStore.js';
 import {
   seedFromConfig,
@@ -34,7 +38,7 @@ import { useDisplay } from 'vuetify'
 
 export default {
   components: {
-    tab1,tab2,tab3,loader,homeright,typewriter,polarchart,aboutme,plannerpage,spinbuddy,pageclimber,worldpage,blogpage,minimusic,authchip,profileeditor
+    tab1,tab2,tab3,loader,homeright,typewriter,polarchart,aboutme,plannerpage,spinbuddy,pageclimber,worldpage,blogpage,minimusic,authchip,profileeditor,mobilepage,reviews,reviewspage
   },
   setup() {
     const { xs,sm,md } = useDisplay();
@@ -42,7 +46,7 @@ export default {
   },
   data() {
     return {
-      isloading:false,
+      isloading: true,
       page: 'home',
       worldKey: '',
       blogMode: 'list',
@@ -109,7 +113,7 @@ export default {
     // 尽早设置主题与壁纸，避免 mounted 异步异常导致一直灰屏
     try {
       if (import.meta.env.VITE_CONFIG) {
-        this.configdata = JSON.parse(import.meta.env.VITE_CONFIG);
+        this.configdata = withAssetBase(JSON.parse(import.meta.env.VITE_CONFIG));
       }
     } catch (e) {
       console.warn('VITE_CONFIG 解析失败，使用本地 config', e);
@@ -136,7 +140,7 @@ export default {
       this.formattedTime = this.getFormattedTime(new Date());
       this.formattedDate = this.getFormattedDate(new Date());
     } catch (_) {}
-    this.isloading = false;
+    this.isloading = true;
   },
   mounted() {
     this.syncPageFromHash();
@@ -153,7 +157,6 @@ export default {
     };
 
     tick();
-    this.isloading = false;
 
     try {
       try { this.dataConsole(); } catch (_) {}
@@ -224,10 +227,17 @@ export default {
   },
   
   methods: {
-    getCookie,setMeta,getFormattedTime,getFormattedDate,dataConsole,
+    getCookie,setMeta,getFormattedTime,getFormattedDate,dataConsole,assetUrl,
 
+    onIntroDone() {
+      this.isloading = false;
+    },
     syncAuth() {
       this.isAdmin = !!getSiteAuth().ok;
+      // 后台核对 Cookie；过期则清掉「假管理员」态
+      refreshServerAuth().then((auth) => {
+        this.isAdmin = !!auth.ok;
+      }).catch(() => {});
     },
     onAuthChange(ok) {
       this.isAdmin = !!ok;
@@ -254,9 +264,15 @@ export default {
 
     syncPageFromHash() {
       const hash = (location.hash || '').replace(/^#\/?/, '');
-      if (hash === 'planner' || hash === 'reviews') {
-        // reviews 旧链接兼容跳转到学习计划本
+      if (hash === 'planner') {
         this.page = 'planner';
+        this.worldKey = '';
+        this.blogMode = 'list';
+        this.blogPostId = '';
+        return;
+      }
+      if (hash === 'reviews') {
+        this.page = 'reviews';
         this.worldKey = '';
         this.blogMode = 'list';
         this.blogPostId = '';
@@ -317,8 +333,13 @@ export default {
       this.blogPostId = '';
     },
     openReviews() {
-      // 兼容旧事件名
-      this.openPlanner();
+      this.page = 'reviews';
+      this.worldKey = '';
+      this.blogMode = 'list';
+      this.blogPostId = '';
+      if ((location.hash || '').replace(/^#\/?/, '') !== 'reviews') {
+        location.hash = 'reviews';
+      }
     },
     openWorld(key) {
       location.hash = `world/${key}`;
@@ -400,12 +421,13 @@ export default {
           : (isMobile ? this.configdata.background.mobile : this.configdata.background.pc);
 
         if (bg && bg.type === 'pic' && bg.datainfo && bg.datainfo.url) {
-          root.style.setProperty('--leleo-background-image-url', `url('${bg.datainfo.url}')`);
-          imageurl = bg.datainfo.url;
+          const url = assetUrl(bg.datainfo.url);
+          root.style.setProperty('--leleo-background-image-url', `url('${url}')`);
+          imageurl = url;
           return imageurl;
         }
         if (bg && bg.datainfo && bg.datainfo.url) {
-          this.videosrc = bg.datainfo.url;
+          this.videosrc = assetUrl(bg.datainfo.url);
         }
       } catch (e) {
         console.error('设置主题/壁纸失败:', e);
@@ -413,8 +435,9 @@ export default {
         root.style.setProperty('--leleo-vcard-color', '#FFFFFF');
         root.style.setProperty('--leleo-brightness', '85%');
         root.style.setProperty('--leleo-blur', '5px');
-        root.style.setProperty('--leleo-background-image-url', `url('${this.configdata.background.pc.datainfo.url}')`);
-        return this.configdata.background.pc.datainfo.url;
+        const fallbackUrl = assetUrl(this.configdata.background.pc.datainfo.url);
+        root.style.setProperty('--leleo-background-image-url', `url('${fallbackUrl}')`);
+        return fallbackUrl;
       }
       return imageurl;
     },

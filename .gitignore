@@ -1,5 +1,18 @@
 # Dependencies
 node_modules/
+dist/
+.DS_Store
+*.local
+
+# Server runtime
+server/node_modules/
+server/uploads/
+server/data/*.tmp
+server/.env
+
+.env
+.env.*
+!.env.example
 
 # Build
 dist/
@@ -50,3 +63,19 @@ extract_*.py
 /zlist_list.txt
 /share_page.html
 /findstr_out.txt
+
+# Local build artifacts / archives (do not publish)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+deploy-pack/
+leleo-deploy.zip
+leleo-dist.zip
+leleo-img.tar
+reviews-deploy.zip
+leleo-data*.sql
+tmp-count.sql
+
+# Server runtime data (bcrypt hash / user content)
+server/data/

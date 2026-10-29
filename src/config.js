@@ -1,3 +1,5 @@
+import { withAssetBase } from './utils/assetUrl.js';
+
 const config = {
 	//网页元数据
 	metaData: {
@@ -146,9 +148,9 @@ const config = {
 			desc: '把想法一点点做成能打开的页面。',
 			cover: '/img/wallpaper/static/书房夜晚/image.png',
 			items: [
-				{ title: '个人主页', text: '你正在看的这个站点', link: '' },
-				{ title: '前端练手', text: 'Vue / Vuetify 小实验' },
-				{ title: '工具脚本', text: '生活里用得上的小工具' },
+				{ title: '个人主页', text: '你正在看的这个站点，Vue + Vuetify 个人主页。', website: '/', repo: 'https://github.com/lyw313/leleo-home-page' },
+				{ title: '前端练手', text: 'Vue / Vuetify 小实验与组件练习。', website: '', repo: '' },
+				{ title: '工具脚本', text: '生活里用得上的小工具。', website: '', repo: '' },
 			],
 		},
 		{
@@ -233,6 +235,7 @@ const config = {
 		blog: '/img/wallpaper/static/书房夜晚/image.png',
 		planner: '/img/world/life/sunset.png',
 		music: '/img/world/life/moon-town.png',
+		reviews: '/img/reviews/portrait.png',
 	},
 
 	//壁纸数据 -----可以将壁纸文件上传到图床获取网络直链。若想调用api，请前往脚本自行修改逻辑
@@ -305,4 +308,4 @@ const config = {
 	statement: ["", "Copyright © 2026 李应旺"],
 }
 
-export default config
+export default withAssetBase(config)

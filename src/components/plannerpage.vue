@@ -15,6 +15,77 @@
       </header>
 
       <div class="planner-page__layout">
+        <!-- 今日推进序列（Flight Plan） -->
+        <section class="planner-flight">
+          <div class="planner-flight__head">
+            <div>
+              <p class="planner-flight__eyebrow">FLIGHT PLAN</p>
+              <h2 class="planner-flight__title">今日推进序列</h2>
+            </div>
+            <span class="planner-flight__legend">NOW → NEXT → LATER</span>
+          </div>
+
+          <div
+            v-for="bucket in flightBuckets"
+            :key="bucket.key"
+            class="planner-flight__bucket"
+          >
+            <div class="planner-flight__bucket-label">
+              <i :class="`dot dot--${bucket.key}`"></i>{{ bucket.label }}
+              <span class="planner-flight__bucket-count">{{ flightTasks(bucket.key).length }}</span>
+            </div>
+
+            <transition-group name="flight" tag="div" class="planner-flight__cards" :data-bucket="bucket.key">
+              <article
+                v-for="task in flightTasks(bucket.key)"
+                :key="task.id"
+                class="flight-card"
+                :class="{ 'is-now': bucket.key === 'now', 'is-done': task.done }"
+              >
+                <div class="flight-card__meta">
+                  <span class="flight-card__topic" v-if="topicOf(task.topicId)" :style="{ color: topicOf(task.topicId).color }">{{ topicOf(task.topicId).name }}</span>
+                  <span class="flight-card__date">{{ task.date }}</span>
+                </div>
+                <h3 class="flight-card__title">{{ task.title }}</h3>
+                <p v-if="task.note" class="flight-card__note">{{ task.note }}</p>
+                <div class="flight-card__actions">
+                  <button type="button" class="fbtn fbtn--check" :title="task.done ? '取消完成' : '完成'" @click="toggleTaskDone(task)">
+                    <v-icon :icon="task.done ? 'mdi-check-circle' : 'mdi-check'" size="16"></v-icon>
+                  </button>
+                  <button v-if="bucket.key !== 'now' && !task.done" type="button" class="fbtn" title="设为 Now" @click="promoteTask(task)">
+                    <v-icon icon="mdi-arrow-up-bold" size="15"></v-icon>
+                  </button>
+                  <button v-if="bucket.key === 'now'" type="button" class="fbtn" title="退回 Next" @click="demoteTask(task)">
+                    <v-icon icon="mdi-arrow-down-bold" size="15"></v-icon>
+                  </button>
+                  <span v-if="bucket.key === 'now' && !task.done" class="flight-card__lock">已锁定为 Now</span>
+                  <span class="flight-card__spacer"></span>
+                  <button type="button" class="fbtn fbtn--del" title="删除" @click="deleteTask(task)">
+                    <v-icon icon="mdi-trash-can-outline" size="15"></v-icon>
+                  </button>
+                </div>
+              </article>
+            </transition-group>
+
+            <p v-if="!flightTasks(bucket.key).length" class="planner-flight__empty">暂无任务</p>
+          </div>
+
+          <form class="planner-flight__form" @submit.prevent="submitTask">
+            <input v-model="taskForm.title" maxlength="80" placeholder="新任务：今天的主线是什么？" />
+            <select v-model="taskForm.bucket">
+              <option value="now">现在</option>
+              <option value="next">接下来</option>
+              <option value="later">稍后</option>
+            </select>
+            <select v-model="taskForm.topicId">
+              <option value="">无分类</option>
+              <option v-for="t in state.topics" :key="t.id" :value="t.id">{{ t.name }}</option>
+            </select>
+            <input v-model="taskForm.date" type="date" />
+            <button type="submit" :disabled="!taskForm.title.trim()">添加</button>
+          </form>
+        </section>
+
         <section class="planner-cal">
           <div class="planner-cal__toolbar">
             <button type="button" class="planner-cal__nav" title="上一月" @click="shiftMonth(-1)">
@@ -183,21 +254,27 @@
 <script>
 import {
   loadPlanner,
+  hydratePlannerFromServer,
   upsertPlannerEntry,
   getPlannerEntry,
   addPlannerTopic,
   updateTopicRange,
   removePlannerTopic,
+  addTask,
+  updateTask,
+  removeTask,
+  moveTaskBucket,
   toDateKey,
   formatDateLabel,
   monthMatrix,
   countPlannerDays,
 } from '../utils/plannerStore.js';
+import { assetUrl } from '../utils/assetUrl.js';
 
 export default {
   name: 'PlannerPage',
   props: {
-    background: { type: String, default: '/img/world/life/sunset.png' },
+    background: { type: String, default: () => assetUrl('/img/world/life/sunset.png') },
   },
   emits: ['back'],
   data() {
@@ -216,6 +293,7 @@ export default {
       saveHint: '',
       saveTimer: null,
       weekLabels: ['日', '一', '二', '三', '四', '五', '六'],
+      taskForm: { title: '', bucket: 'now', topicId: '', date: toDateKey() },
     };
   },
   computed: {
@@ -241,19 +319,41 @@ export default {
       const name = this.newTopicForm.name.trim();
       return !!(name && this.newTopicForm.startDate && this.newTopicForm.endDate);
     },
+    flightBuckets() {
+      return [
+        { key: 'now', label: '现在' },
+        { key: 'next', label: '接下来' },
+        { key: 'later', label: '稍后关注' },
+      ];
+    },
   },
   created() {
     this.loadDraft(this.selectedKey);
-    window.addEventListener('leleo-planner-updated', this.reload);
+    window.addEventListener('leleo-planner-updated', this.reloadFromCache);
+    this.hydrateFromServer();
   },
   beforeUnmount() {
     this.flushSave();
     if (this.saveTimer) clearTimeout(this.saveTimer);
-    window.removeEventListener('leleo-planner-updated', this.reload);
+    window.removeEventListener('leleo-planner-updated', this.reloadFromCache);
   },
   methods: {
-    reload() {
+    reloadFromCache() {
       this.state = loadPlanner();
+      this.loadDraft(this.selectedKey);
+    },
+    async hydrateFromServer() {
+      try {
+        const state = await hydratePlannerFromServer();
+        if (state) {
+          this.state = state;
+          this.loadDraft(this.selectedKey);
+        }
+      } catch (_) {}
+    },
+    reload() {
+      this.reloadFromCache();
+      this.hydrateFromServer();
     },
     chipStyle(topic, active) {
       return {
@@ -369,6 +469,37 @@ export default {
       this.draft = { topicIds: [], plan: '', diary: '' };
       this.saveNow(true);
     },
+
+    /* ---- 今日推进序列 ---- */
+    flightTasks(bucket) {
+      const today = toDateKey();
+      return (this.state.tasks || [])
+        .filter((t) => t.bucket === bucket && (bucket === 'later' || t.date === today))
+        .sort((a, b) => (a.done - b.done) || ((a.order || 0) - (b.order || 0)));
+    },
+    topicOf(id) {
+      if (!id) return null;
+      return this.state.topics.find((t) => t.id === id) || null;
+    },
+    submitTask() {
+      const title = this.taskForm.title.trim();
+      if (!title) return;
+      this.state = addTask(this.state, { ...this.taskForm, title });
+      this.taskForm.title = '';
+    },
+    toggleTaskDone(task) {
+      this.state = updateTask(this.state, task.id, { done: !task.done });
+    },
+    promoteTask(task) {
+      this.state = moveTaskBucket(this.state, task.id, 'now');
+    },
+    demoteTask(task) {
+      this.state = moveTaskBucket(this.state, task.id, 'next');
+    },
+    deleteTask(task) {
+      if (!confirm(`删除任务「${task.title}」？`)) return;
+      this.state = removeTask(this.state, task.id);
+    },
   },
 };
 </script>
@@ -433,6 +564,119 @@ export default {
   gap: 0.9rem;
   align-items: start;
 }
+.planner-flight {
+  grid-column: 1 / -1;
+  border-radius: 22px;
+  padding: 1.1rem 1.15rem 1.25rem;
+  background: rgba(18, 22, 30, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.planner-flight__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+.planner-flight__eyebrow {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #5ec8ff;
+}
+.planner-flight__title {
+  margin: 0.15rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 780;
+}
+.planner-flight__legend {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  opacity: 0.55;
+}
+.planner-flight__bucket { margin-bottom: 0.85rem; }
+.planner-flight__bucket-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 720;
+  opacity: 0.9;
+  margin-bottom: 0.45rem;
+}
+.planner-flight__bucket-count {
+  font-size: 0.68rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  opacity: 0.8;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot--now { background: #5ec8ff; box-shadow: 0 0 6px #5ec8ff; }
+.dot--next { background: transparent; border: 2px solid #5ec8ff; width: 7px; height: 7px; }
+.dot--later { background: rgba(255,255,255,0.35); }
+.planner-flight__cards { display: grid; gap: 0.5rem; }
+.planner-flight__cards[data-bucket='now'] .flight-card { border-color: rgba(94, 200, 255, 0.55); background: linear-gradient(135deg, rgba(94,200,255,0.16), rgba(18,22,30,0.9)); }
+.planner-flight__cards[data-bucket='now'] { grid-template-columns: 1fr; }
+.flight-card {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.65rem 0.8rem;
+}
+.flight-card.is-done { opacity: 0.5; }
+.flight-card.is-done .flight-card__title { text-decoration: line-through; }
+.flight-card__meta { display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; opacity: 0.75; margin-bottom: 0.2rem; }
+.flight-card__topic { font-weight: 700; }
+.flight-card__title { margin: 0; font-size: 0.92rem; font-weight: 740; }
+.flight-card.is-now .flight-card__title { font-size: 1.02rem; }
+.flight-card__note { margin: 0.25rem 0 0; font-size: 0.76rem; opacity: 0.72; }
+.flight-card__actions { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.45rem; }
+.flight-card__spacer { flex: 1; }
+.flight-card__lock { font-size: 0.66rem; color: #5ec8ff; letter-spacing: 0.06em; }
+.fbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  cursor: pointer;
+}
+.fbtn--check:hover { background: rgba(154, 230, 180, 0.3); border-color: #9ae6b4; }
+.fbtn--del:hover { background: rgba(252, 129, 129, 0.28); border-color: #fc8181; }
+.planner-flight__empty { margin: 0; font-size: 0.74rem; opacity: 0.45; }
+.planner-flight__form {
+  display: grid;
+  grid-template-columns: 2fr auto auto auto auto;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+}
+.planner-flight__form input,
+.planner-flight__form select,
+.planner-flight__form button {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: inherit;
+  padding: 0.42rem 0.55rem;
+  font-size: 0.8rem;
+}
+.planner-flight__form input[type='date'] { color-scheme: dark; }
+.planner-flight__form button {
+  background: rgba(94, 200, 255, 0.24);
+  border-color: rgba(94, 200, 255, 0.5);
+  font-weight: 700;
+  cursor: pointer;
+}
+.planner-flight__form button:disabled { opacity: 0.4; cursor: default; }
+.flight-enter-active, .flight-leave-active, .flight-move { transition: all 0.25s ease; }
+.flight-enter-from, .flight-leave-to { opacity: 0; transform: translateY(-4px); }
 .planner-cal,
 .planner-editor {
   border-radius: 22px;
